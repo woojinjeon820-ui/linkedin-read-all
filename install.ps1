@@ -237,47 +237,109 @@ function Open-ExtPageByTyping($b) {
   return $true
 }
 
-function Invoke-Click($el, $window) {
-  $inv = Get-Pattern $el ([System.Windows.Automation.InvokePattern]::Pattern)
-  if ($inv) { $inv.Invoke(); return }
-  $tog = Get-Pattern $el ([System.Windows.Automation.TogglePattern]::Pattern)
-  if ($tog) { $tog.Toggle(); return }
-  # Last resort: a real mouse click on the element.
-  if ($window) { try { [void][LNRA.Native]::SetForegroundWindow([IntPtr]$window.Current.NativeWindowHandle) } catch {} }
+function Invoke-Click($el, $window, [switch]$Mouse) {
+  if (-not $Mouse) {
+    $inv = Get-Pattern $el ([System.Windows.Automation.InvokePattern]::Pattern)
+    if ($inv) { $inv.Invoke(); return }
+    $tog = Get-Pattern $el ([System.Windows.Automation.TogglePattern]::Pattern)
+    if ($tog) { $tog.Toggle(); return }
+  }
+  # A real mouse click on the element.
+  if ($window) { [void](Set-Foreground $window) }
   Start-Sleep -Milliseconds 300
-  $pt = $el.GetClickablePoint()
-  [void][LNRA.Native]::SetCursorPos([int]$pt.X, [int]$pt.Y)
+  $r = $el.Current.BoundingRectangle
+  [void][LNRA.Native]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
   [LNRA.Native]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
   [LNRA.Native]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Write-DebugTree($el, [string]$title) {
+  if (-not $env:LNRA_DEBUG) { return }
+  Say "[debug] $title"
+  $n = 0
+  foreach ($e in $el.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+    if (++$n -gt 150) { break }
+    try {
+      $c = $e.Current
+      if (-not $c.Name -and $c.ControlType -ne $CT::Button) { continue }
+      $pats = ($e.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName -replace 'PatternIdentifiers.Pattern', '' }) -join ','
+      Say "[debug]   $($c.ControlType.ProgrammaticName) '$($c.Name)' id=$($c.AutomationId) [$pats] offscreen=$($c.IsOffscreen)"
+    } catch {}
+  }
 }
 
 # The web page itself, so we never match the browser's own toolbar (its Reload button, a pinned
 # extension button, ...).
 function Get-PageDoc($win) {
   $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Document)
-  foreach ($d in $win.FindAll($Scope::Descendants, $cond)) {
-    try { if (@(Find-Named $d 'Developer mode').Count) { return $d } } catch {}
-  }
+  $docs = @($win.FindAll($Scope::Descendants, $cond))
+  foreach ($d in $docs) { try { if (@(Find-Named $d 'Developer mode').Count) { return $d } } catch {} }
+  # Edge hides the switch in a collapsed side menu; take the page anyway.
+  foreach ($d in $docs) { try { if ($d.Current.Name -like 'Extensions*') { return $d } } catch {} }
 }
 
 function Get-LoadButton($win) {
   @(Find-Named $win 'Load unpacked' $CT::Button | Where-Object { -not $_.Current.IsOffscreen })[0]
 }
 
+function Get-DevModeControls($page) {
+  $all = @(Find-Named $page 'Developer mode' | Where-Object { $_.Current.ControlType -ne $CT::Text -and -not $_.Current.IsOffscreen })
+  # Real switches first, then buttons, then anything else carrying the name.
+  $switches = @($all | Where-Object { Get-Pattern $_ ([System.Windows.Automation.TogglePattern]::Pattern) })
+  $buttons = @($all | Where-Object { $_.Current.ControlType -eq $CT::Button -and $switches -notcontains $_ })
+  $rest = @($all | Where-Object { $switches -notcontains $_ -and $buttons -notcontains $_ })
+  @($switches) + @($buttons) + @($rest)
+}
+
+# Edge (and narrow windows) put Developer mode in a side menu behind a menu button.
+function Show-SideMenu($page, $win) {
+  [void][LNRA.Native]::ShowWindow([IntPtr]$win.Current.NativeWindowHandle, 3)  # SW_MAXIMIZE
+  if (Wait-For { @(Get-DevModeControls $page).Count } 3) { return $true }
+  $menu = @(Find-All-Buttons $page | Where-Object { $_.Current.Name -match 'menu|navigation|sidebar' -and -not $_.Current.IsOffscreen })[0]
+  if (-not $menu) { return $false }
+  Invoke-Click $menu $win
+  return [bool](Wait-For { @(Get-DevModeControls $page).Count } 4)
+}
+
+function Find-All-Buttons($el) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+  foreach ($x in $el.FindAll($Scope::Descendants, $cond)) { $x }
+}
+
 function Enable-DevMode($page, $win) {
-  $toggle = Wait-For {
-    @(Find-Named $page 'Developer mode' | Where-Object { $_.Current.ControlType -ne $CT::Text })[0]
-  } 10
-  if (-not $toggle) { return 'no-toggle' }
   if (Get-LoadButton $page) { return 'on' }
-  $tog = Get-Pattern $toggle ([System.Windows.Automation.TogglePattern]::Pattern)
+  $controls = @(Wait-For { $c = @(Get-DevModeControls $page); if ($c.Count) { $c } } 6)
+  if (-not $controls.Count) {
+    if (Show-SideMenu $page $win) { $controls = @(Get-DevModeControls $page) }
+    if (Get-LoadButton $page) { return 'on' }
+  }
+  Write-DebugTree $page 'extensions page'
+  if (-not $controls.Count) { return 'no-toggle' }
+
+  $tog = Get-Pattern $controls[0] ([System.Windows.Automation.TogglePattern]::Pattern)
   if ($tog -and $tog.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) {
     if (Wait-For { Get-LoadButton $page } 3) { return 'on' }
   }
-  if (-not $toggle.Current.IsEnabled) { return 'blocked' }
+  if (@($controls | Where-Object { $_.Current.IsEnabled }).Count -eq 0) { return 'blocked' }
   Say 'Turning on Developer mode...'
-  Invoke-Click $toggle $win
-  if (Wait-For { Get-LoadButton $page } 8) { return 'on' }
+  # Try each control, by UI Automation and then with a real click, until Load unpacked shows up.
+  # Once a switch reports On, stop clicking (another click would turn it back off) and just wait.
+  $isOn = { @($controls | Where-Object {
+      $t = Get-Pattern $_ ([System.Windows.Automation.TogglePattern]::Pattern)
+      $t -and $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On }).Count }
+  foreach ($useMouse in $false, $true) {
+    foreach ($c in $controls) {
+      if (-not $c.Current.IsEnabled) { continue }
+      try { Invoke-Click $c $win -Mouse:$useMouse } catch { continue }
+      if (Wait-For { Get-LoadButton $page } 4) { return 'on' }
+      if (& $isOn) {
+        if (Wait-For { Get-LoadButton $page } 6) { return 'on' }
+        Write-DebugTree $page 'Developer mode is on but no Load unpacked button'
+        return 'failed'
+      }
+    }
+  }
+  Write-DebugTree $page 'extensions page after trying Developer mode'
   return 'failed'
 }
 
