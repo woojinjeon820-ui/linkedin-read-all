@@ -14,52 +14,13 @@ Works in Google Chrome, Aside, and other Chromium browsers (Edge, Brave, Arc).
 
 ### Let an AI agent do it
 
-Paste this into **Claude Code** (or Claude with computer use or Claude in Chrome) or **Codex**:
+Paste this into **Claude Code** or **Codex**:
 
 ```text
-Install the "LinkedIn Read-All" browser extension for me from
-https://github.com/woojinjeon820-ui/linkedin-read-all
-Do the whole install yourself. Only hand me a step if you truly can't do it.
-
-1. Find out which browser I use: Chrome, Aside, Edge, Brave or Arc. Prefer the one that's
-   open; ask me if you can't tell. Its extensions page is chrome://extensions
-   (Aside and Arc too), edge://extensions in Edge, brave://extensions in Brave.
-2. Read the installer for my OS in that repo, then run it. Run it in a normal shell that can
-   reach the internet and my desktop. If your sandbox blocks that, ask me to approve running
-   it outside the sandbox. Don't download or unzip anything by hand.
-   - Windows, from PowerShell, cmd or Git Bash (the script is install.ps1):
-     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex"
-   - macOS / Linux (the script is install.sh):
-     curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
-   On Windows the script also does the browser clicks itself (Developer mode, Load unpacked,
-   the folder picker, or Reload on an update). Tell me not to touch the mouse or keyboard
-   while it runs. Its last line is LNRA_RESULT=<value>:
-   - loaded or reloaded: done, go to step 4.
-   - other-copy: an older copy from another folder is loaded. Tell me, and offer to remove
-     it (only with my OK), then run the installer again.
-   - manual: the files are installed; the output says which browser step is left. Do step 3.
-   - failed: tell me the error.
-3. Only if the browser step is left (always on macOS / Linux): if the extensions page
-   already lists "LinkedIn Read-All", don't load another copy (two copies conflict). Press
-   the reload icon on its card instead. Otherwise, if you can control my browser, do the
-   clicks yourself: turn on Developer mode, click "Load unpacked", and pick the folder the
-   installer printed. The folder picker is a system dialog many agents can't operate. If
-   you can't, ask me to do just that part (macOS: Cmd+Shift+G, Cmd+V, Enter, Select;
-   Windows: Ctrl+V into the Folder box, Select Folder) and wait. If you can't control the
-   browser at all, walk me through each click and wait for me after each one.
-4. Check that "LinkedIn Read-All" is listed and turned on. Then open
-   https://www.linkedin.com/notifications/ (I may need to sign in) and confirm a dark bar
-   with "Mark all as read" appears at the bottom of the page. If you check the page's code
-   rather than a screenshot, the bar is inside the shadow root of the #lnra-host element,
-   so a plain text search of the page won't find it. If you can't see my browser, ask me
-   whether the bar is there.
-
-Don't change, disable or remove other extensions or browser settings. Don't close my
-tabs; you may close tabs you opened yourself. Tell me what you did and anything that
-didn't work.
+Install https://github.com/woojinjeon820-ui/linkedin-read-all: run `curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash` (Windows PowerShell: `irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex`), then tell me what it printed.
 ```
 
-The agent runs the installer. On Windows the installer also does the browser clicks itself through Windows UI Automation. On macOS and Linux the agent does the clicks if it can control your browser, and otherwise walks you through them.
+The installer does the whole job: download, load into the browser, or reload on an update. In **Aside on macOS** and in **Chrome, Edge, Brave and Aside on Windows** that includes the browser clicks, so there is nothing left for you. In other browsers on macOS and Linux it opens the Extensions page and copies the folder path, and you do the last two clicks (the agent tells you which).
 
 ### Do it yourself
 
@@ -69,13 +30,12 @@ The agent runs the installer. On Windows the installer also does the browser cli
 curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
 ```
 
-The script downloads the latest release to `~/LinkedIn-Read-All`, copies that path to your clipboard, and opens your browser's Extensions page. Then:
+The script downloads the latest release to `~/LinkedIn-Read-All`.
 
-1. Turn on **Developer mode** (top right).
-2. Click **Load unpacked**, press `Cmd+Shift+G`, paste (`Cmd+V`), press Enter, then **Select**.
-3. Open <https://www.linkedin.com/notifications/>. The bar appears at the bottom.
+- **Aside on macOS:** if Aside is open, the script loads the extension itself through Aside's `aside` command-line tool. It turns on Developer mode and loads the folder, or reloads it on an update. Nothing to click.
+- **Other browsers:** it copies the folder path to your clipboard and opens the Extensions page. Then turn on **Developer mode** (top right), click **Load unpacked**, press `Cmd+Shift+G`, paste (`Cmd+V`), press Enter, then **Select**. Browsers only allow one-click installs from their web stores, so this part is by hand.
 
-That last part has to be done by hand: browsers only allow one-click installs from their web stores. To **update**, run the same command again, then press the reload icon on the extension's card. [Read the script](install.sh) before running it if you like. It only writes to `~/LinkedIn-Read-All`.
+Then open <https://www.linkedin.com/notifications/>. The bar appears at the bottom. To **update**, run the same command again: in Aside it reloads the extension for you; elsewhere press the reload icon on the extension's card. [Read the script](install.sh) before running it if you like. It only writes to `~/LinkedIn-Read-All`, or updates the folder Aside already loads the extension from.
 
 **Windows, one command** (Chrome, Edge, Brave, Aside). Paste it into PowerShell, cmd or Git Bash:
 
