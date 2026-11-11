@@ -214,6 +214,35 @@ function Get-ExtWindow($b) {
   }
 }
 
+function Set-Foreground($window) {
+  $h = [IntPtr]$window.Current.NativeWindowHandle
+  if ([LNRA.Native]::GetForegroundWindow() -eq $h) { return $true }
+  try { $window.SetFocus() } catch {}
+  [void][LNRA.Native]::ShowWindow($h, 9)  # SW_RESTORE, in case it's minimized
+  # Windows only lets the foreground app hand over focus; a tap of Alt counts as input from us.
+  [LNRA.Native]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+  [LNRA.Native]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+  [void][LNRA.Native]::SetForegroundWindow($h)
+  Start-Sleep -Milliseconds 300
+  return ([LNRA.Native]::GetForegroundWindow() -eq $h)
+}
+
+# Chrome ignores chrome:// addresses passed on its command line, so type it in the address bar.
+# Reuses an empty New Tab (the one Chrome just opened for us), otherwise opens a new tab, so the
+# tab you were looking at is left alone.
+function Open-ExtPageByTyping($b) {
+  $win = @(Get-TopWindows $b | Where-Object { $_.Current.ClassName -like 'Chrome_WidgetWin*' -and $_.Current.Name })[0]
+  if (-not $win) { return $false }
+  if (-not (Set-Foreground $win)) { return $false }
+  if ($win.Current.Name -like 'New Tab*') { $keys = '^l' } else { $keys = '^t' }
+  [System.Windows.Forms.SendKeys]::SendWait($keys)
+  Start-Sleep -Milliseconds 500
+  [System.Windows.Forms.SendKeys]::SendWait($b.Page)
+  Start-Sleep -Milliseconds 200
+  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+  return $true
+}
+
 function Invoke-Click($el, $window) {
   $inv = Get-Pattern $el ([System.Windows.Automation.InvokePattern]::Pattern)
   if ($inv) { $inv.Invoke(); return }
@@ -322,6 +351,9 @@ function Invoke-BrowserStep($b) {
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
 [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
 '@
   } catch {}  # already defined by an earlier run in this session
   # Seen by the helper functions through PowerShell's dynamic scoping.
@@ -330,7 +362,14 @@ function Invoke-BrowserStep($b) {
   $CT = [System.Windows.Automation.ControlType]
 
   Say "Doing the browser clicks for you. Please don't use the mouse or keyboard for a few seconds..."
-  $win = Wait-For { Get-ExtWindow $b } 30
+  $win = Wait-For { Get-ExtWindow $b } 6
+  if (-not $win) {
+    # Give the browser a moment to finish starting, then type the address in.
+    [void](Wait-For { @(Get-TopWindows $b | Where-Object { $_.Current.Name }).Count } 20)
+    Start-Sleep -Seconds 1
+    Say "Opening $($b.Page)..."
+    if (Open-ExtPageByTyping $b) { $win = Wait-For { Get-ExtWindow $b } 10 }
+  }
   if (-not $win) {
     Say "Waiting for the Extensions page. If it isn't open, type $($b.Page) into $($b.Label)'s address bar."
     $win = Wait-For { Get-ExtWindow $b } 90
