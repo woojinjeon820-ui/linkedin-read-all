@@ -308,7 +308,7 @@ function Find-All-Buttons($el) {
 
 function Enable-DevMode($page, $win) {
   if (Get-LoadButton $page) { return 'on' }
-  $controls = @(Wait-For { $c = @(Get-DevModeControls $page); if ($c.Count) { $c } } 6)
+  $controls = @(Wait-For { $c = @(Get-DevModeControls $page); if ($c.Count) { $c } } 6 | Where-Object { $_ })
   if (-not $controls.Count) {
     if (Show-SideMenu $page $win) { $controls = @(Get-DevModeControls $page) }
     if (Get-LoadButton $page) { return 'on' }
