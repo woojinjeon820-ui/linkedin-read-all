@@ -1,4 +1,4 @@
-# LinkedIn Read-All installer / updater for Windows (Chrome, Edge, Brave, Chromium).
+# LinkedIn Read-All installer / updater for Windows (Chrome, Edge, Brave, Aside, Chromium).
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex"
 #
@@ -20,7 +20,7 @@
 #
 # Options (environment variables):
 #   LNRA_DIR=C:\path       install somewhere else (default: %USERPROFILE%\LinkedIn-Read-All)
-#   LNRA_BROWSER=name      chrome | edge | brave | chromium (default: the open one, else Chrome, Brave, Edge)
+#   LNRA_BROWSER=name      chrome | edge | brave | aside | chromium (default: the open one, else Chrome, Aside, Brave, Edge)
 #   LNRA_NO_AUTOMATE=1     don't click anything; print the manual steps
 #   LNRA_NO_OPEN=1         don't open the browser (implies LNRA_NO_AUTOMATE)
 #   LNRA_NO_CLIPBOARD=1    don't touch the clipboard
@@ -102,6 +102,9 @@ $Browsers = [ordered]@{
   brave    = @{ Label = 'Brave';          Proc = 'brave';  Frag = '\BraveSoftware\';  Page = 'brave://extensions/'
                 Paths = @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe", "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe", (Get-AppPath 'brave.exe'))
                 Data  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data" }
+  aside    = @{ Label = 'Aside';          Proc = 'Aside';  Frag = '\Aside\';          Page = 'chrome://extensions/'
+                Paths = @("$env:ProgramFiles\Aside\Application\Aside.exe", "$env:LOCALAPPDATA\Aside\Application\Aside.exe", (Get-AppPath 'Aside.exe'))
+                Data  = "$env:LOCALAPPDATA\Aside\User Data" }
   chromium = @{ Label = 'Chromium';       Proc = 'chrome'; Frag = '\Chromium\';       Page = 'chrome://extensions/'
                 Paths = @("$env:LOCALAPPDATA\Chromium\Application\chrome.exe")
                 Data  = "$env:LOCALAPPDATA\Chromium\User Data" }
@@ -124,8 +127,8 @@ function Select-Browser {
     return $k
   }
   # Prefer a browser with an open window (Edge often runs in the background without one).
-  foreach ($k in 'chrome', 'brave', 'edge', 'chromium') { if ((Get-BrowserExe $Browsers[$k]) -and (Test-BrowserOpen $Browsers[$k])) { return $k } }
-  foreach ($k in 'chrome', 'brave', 'edge', 'chromium') { if (Get-BrowserExe $Browsers[$k]) { return $k } }
+  foreach ($k in 'aside', 'chrome', 'brave', 'edge', 'chromium') { if ((Get-BrowserExe $Browsers[$k]) -and (Test-BrowserOpen $Browsers[$k])) { return $k } }
+  foreach ($k in 'chrome', 'aside', 'brave', 'edge', 'chromium') { if (Get-BrowserExe $Browsers[$k]) { return $k } }
 }
 
 # Read-only look at the browser's profile files: folders this extension is loaded unpacked from.

@@ -77,7 +77,7 @@ The script downloads the latest release to `~/LinkedIn-Read-All`, copies that pa
 
 That last part has to be done by hand: browsers only allow one-click installs from their web stores. To **update**, run the same command again, then press the reload icon on the extension's card. [Read the script](install.sh) before running it if you like. It only writes to `~/LinkedIn-Read-All`.
 
-**Windows, one command** (Chrome, Edge, Brave). Paste it into PowerShell, cmd or Git Bash:
+**Windows, one command** (Chrome, Edge, Brave, Aside). Paste it into PowerShell, cmd or Git Bash:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex"
