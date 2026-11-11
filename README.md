@@ -12,6 +12,36 @@ Works in Google Chrome, Aside, and other Chromium browsers (Edge, Brave, Arc).
 
 ## Install
 
+### Let an AI agent do it
+
+Paste this into **Claude Code** (or Claude with computer use or Claude in Chrome) or **Codex**:
+
+```text
+Install the "LinkedIn Read-All" browser extension for me from
+https://github.com/woojinjeon820-ui/linkedin-read-all
+
+1. Read install.sh in that repo, then run it:
+   curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
+   On Windows, download the .zip from the repo's latest release and unzip it to
+   %USERPROFILE%\LinkedIn-Read-All instead.
+2. Find out which browser I use (Chrome, Aside, Edge, Brave or Arc). Ask me if you can't tell.
+3. Browsers don't let scripts load extensions, so this part takes clicks. If you can control
+   my browser or screen, do them yourself: open chrome://extensions (edge://extensions in
+   Edge), turn on Developer mode, click "Load unpacked", and choose the LinkedIn-Read-All
+   folder from step 1. If you can't, walk me through those clicks one at a time and wait
+   for me after each.
+4. Check that "LinkedIn Read-All" is listed and turned on. Then open
+   https://www.linkedin.com/notifications/ (I may need to sign in) and confirm a dark bar
+   with "Mark all as read" appears at the bottom of the page.
+
+Don't change other extensions or browser settings, and don't close any of my tabs.
+Tell me what you did and anything that didn't work.
+```
+
+The agent runs the installer and, if it can control your browser, does the clicks too. If it can't, it walks you through them.
+
+### Do it yourself
+
 **macOS / Linux, one command** (Chrome, Aside, Edge, Brave, Arc):
 
 ```bash
