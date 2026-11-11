@@ -56,6 +56,19 @@ jobs:
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 *>&1 | Tee-Object -FilePath second.txt
           if (-not (Select-String -Path second.txt -Pattern '^LNRA_RESULT=reloaded$' -Quiet)) { exit 1 }
+      # Someone who loaded a copy by hand (here: the folder above) runs the one-liner from Git Bash,
+      # the shell Claude Code uses on Windows. It should update that copy in place, not add another.
+      - name: Git Bash run adopts the copy that's already loaded
+        shell: bash
+        env:
+          LNRA_USER_DATA_DIR: ${{ runner.temp }}\chrome-profile
+          LNRA_BROWSER: chrome
+          LNRA_NO_CLIPBOARD: '1'
+        run: |
+          bash ./install.sh 2>&1 | tee third.txt
+          grep -q 'Updating that copy' third.txt
+          grep -qx 'LNRA_RESULT=reloaded' <(tr -d '\r' < third.txt)
+          test ! -e "$USERPROFILE/LinkedIn-Read-All"
       - name: Screenshot on failure
         if: failure()
         shell: powershell
@@ -73,3 +86,4 @@ jobs:
             screen.png
             first.txt
             second.txt
+            third.txt

@@ -38,8 +38,16 @@ if [ -n "$win_shell" ]; then
     export LNRA_DIR
   fi
   # WSL only passes variables listed in WSLENV through to Windows programs.
-  export WSLENV="${WSLENV:+$WSLENV:}LNRA_DIR:LNRA_BROWSER:LNRA_NO_AUTOMATE:LNRA_NO_OPEN:LNRA_NO_CLIPBOARD"
+  export WSLENV="${WSLENV:+$WSLENV:}LNRA_DIR:LNRA_BROWSER:LNRA_NO_AUTOMATE:LNRA_NO_OPEN:LNRA_NO_CLIPBOARD:LNRA_USER_DATA_DIR:LNRA_DEBUG"
   say "Windows detected: running the Windows installer (install.ps1)..."
+  # Run from a checkout (bash install.sh)? Use the install.ps1 next to it. Piped from curl? Fetch it.
+  here=""
+  [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ] && here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  if [ -n "$here" ] && [ -f "$here/install.ps1" ]; then
+    ps1="$here/install.ps1"
+    if command -v cygpath >/dev/null 2>&1; then ps1=$(cygpath -w "$ps1"); elif command -v wslpath >/dev/null 2>&1; then ps1=$(wslpath -w "$ps1"); fi
+    exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1"
+  fi
   exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
     "irm 'https://raw.githubusercontent.com/$REPO/main/install.ps1' | iex"
 fi
