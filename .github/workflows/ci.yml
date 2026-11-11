@@ -95,3 +95,45 @@ jobs:
             first.txt
             second.txt
             third.txt
+
+  # TEMPORARY: find out where Aside installs on Windows (paths, process, profile).
+  aside-probe:
+    runs-on: windows-latest
+    steps:
+      - name: Install Aside and look around
+        shell: powershell
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $page = (Invoke-WebRequest 'https://aside.com/download?os=win' -UseBasicParsing).Content
+          $url = [regex]::Match($page, 'https://releases\.aside\.com/[^"\\]*win-x64\.exe').Value
+          Write-Host "installer: $url"
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\aside.exe" -UseBasicParsing
+          $p = Start-Process "$env:RUNNER_TEMP\aside.exe" -ArgumentList '--silent' -PassThru
+          if (-not $p.WaitForExit(240000)) { Write-Host 'installer still running after 4 min' }
+          Start-Sleep 20
+          Write-Host '--- processes'
+          Get-Process | Where-Object { $_.Path -and $_.Path -notlike 'C:\Windows\*' -and $_.Path -notlike '*\hostedtoolcache\*' } | Select-Object -Unique Name, Path | Format-Table -AutoSize | Out-String -Width 300
+          Write-Host '--- App Paths / Uninstall'
+          Get-ChildItem 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match 'aside' } | ForEach-Object { "$($_.Name) = $((Get-ItemProperty $_.PSPath).'(default)')" }
+          Get-ChildItem 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue | ForEach-Object { Get-ItemProperty $_.PSPath } | Where-Object { $_.DisplayName -match 'aside' } | Format-List DisplayName, InstallLocation, DisplayIcon, UninstallString | Out-String -Width 300
+          Write-Host '--- folders'
+          foreach ($root in "$env:LOCALAPPDATA", "$env:APPDATA", "$env:ProgramFiles", "${env:ProgramFiles(x86)}") {
+            Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'aside' } | ForEach-Object { $_.FullName; Get-ChildItem $_.FullName -Recurse -Depth 2 -ErrorAction SilentlyContinue | Where-Object { $_.Extension -eq '.exe' -or $_.Name -match 'User Data|Preferences' } | ForEach-Object { '   ' + $_.FullName } }
+          }
+          Get-ChildItem "$env:LOCALAPPDATA\Programs" -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'aside' } | ForEach-Object { $_.FullName; Get-ChildItem $_.FullName -Filter *.exe -Recurse -Depth 2 | ForEach-Object { '   ' + $_.FullName } }
+          Write-Host '--- shortcuts'
+          Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu", "$env:ProgramData\Microsoft\Windows\Start Menu", "$env:USERPROFILE\Desktop" -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'aside' } | ForEach-Object { $sh = (New-Object -ComObject WScript.Shell).CreateShortcut($_.FullName); "$($_.FullName) -> $($sh.TargetPath) $($sh.Arguments)" }
+      - name: Screenshot
+        if: always()
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $r = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $r.Width, $r.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r.Location, [System.Drawing.Point]::Empty, $r.Size)
+          $bmp.Save("$PWD\aside.png")
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aside-probe
+          path: aside.png
