@@ -20,22 +20,33 @@ Paste this into **Claude Code** (or Claude with computer use or Claude in Chrome
 Install the "LinkedIn Read-All" browser extension for me from
 https://github.com/woojinjeon820-ui/linkedin-read-all
 
-1. Read install.sh in that repo, then run it:
+1. Find out which browser I use: Chrome, Aside, Edge, Brave or Arc. Prefer the one that's
+   running; ask me if you can't tell. Its extensions page is chrome://extensions
+   (Aside and Arc too), edge://extensions in Edge, brave://extensions in Brave.
+2. If you can see that page, check whether "LinkedIn Read-All" is already listed. If it is,
+   don't load another copy (two copies conflict). Tell me its version, and its folder if
+   the Details page shows it (don't guess). If it's older than the latest release, run
+   step 3 to update, then press the reload icon on its card. Then skip to step 5.
+3. Read install.sh in that repo, then run it (it puts the install path on my clipboard):
    curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
-   On Windows, download the .zip from the repo's latest release and unzip it to
-   %USERPROFILE%\LinkedIn-Read-All instead.
-2. Find out which browser I use (Chrome, Aside, Edge, Brave or Arc). Ask me if you can't tell.
-3. Browsers don't let scripts load extensions, so this part takes clicks. If you can control
-   my browser or screen, do them yourself: open chrome://extensions (edge://extensions in
-   Edge), turn on Developer mode, click "Load unpacked", and choose the LinkedIn-Read-All
-   folder from step 1. If you can't, walk me through those clicks one at a time and wait
-   for me after each.
-4. Check that "LinkedIn Read-All" is listed and turned on. Then open
+   On Windows: get the .zip asset of the latest release from
+   https://api.github.com/repos/woojinjeon820-ui/linkedin-read-all/releases/latest
+   and extract it to %USERPROFILE%\LinkedIn-Read-All.
+4. Browsers don't let scripts load extensions, so this part takes clicks. If you can control
+   my browser, do them yourself: on the extensions page turn on Developer mode, click
+   "Load unpacked", and pick the LinkedIn-Read-All folder from step 3. The folder picker is
+   a system dialog many agents can't operate. If you can't, ask me to do just that part
+   (on macOS: Cmd+Shift+G, Cmd+V, Enter, Select) and wait. If you can't control the browser
+   at all, walk me through each click and wait for me after each one.
+5. Check that "LinkedIn Read-All" is listed and turned on. Then open
    https://www.linkedin.com/notifications/ (I may need to sign in) and confirm a dark bar
-   with "Mark all as read" appears at the bottom of the page.
+   with "Mark all as read" appears at the bottom of the page. If you check the page's code
+   rather than a screenshot, the bar is inside the shadow root of the #lnra-host element,
+   so a plain text search of the page won't find it.
 
-Don't change other extensions or browser settings, and don't close any of my tabs.
-Tell me what you did and anything that didn't work.
+Don't change, disable or remove other extensions or browser settings. Don't close my
+tabs; you may close tabs you opened yourself. Tell me what you did and anything that
+didn't work.
 ```
 
 The agent runs the installer and, if it can control your browser, does the clicks too. If it can't, it walks you through them.
