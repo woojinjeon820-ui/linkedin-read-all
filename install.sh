@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# LinkedIn Read-All installer / updater (macOS and Linux).
+# LinkedIn Read-All installer / updater (macOS and Linux; on Windows it runs install.ps1).
 #
 #   curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
 #
@@ -23,6 +23,34 @@ NAME="LinkedIn Read-All"
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+
+# --- 0. On Windows (Git Bash, MSYS, Cygwin, WSL), hand over to install.ps1 -----------------
+# It installs into the Windows user folder and also does the browser clicks itself.
+win_shell=""
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) win_shell=1 ;;
+  Linux) grep -qi microsoft /proc/version 2>/dev/null && command -v powershell.exe >/dev/null 2>&1 && win_shell=1 ;;
+esac
+if [ -n "$win_shell" ]; then
+  if [ -n "${LNRA_DIR:-}" ]; then
+    if command -v cygpath >/dev/null 2>&1; then LNRA_DIR=$(cygpath -w "$LNRA_DIR")
+    elif command -v wslpath >/dev/null 2>&1; then LNRA_DIR=$(wslpath -w "$LNRA_DIR"); fi
+    export LNRA_DIR
+  fi
+  # WSL only passes variables listed in WSLENV through to Windows programs.
+  export WSLENV="${WSLENV:+$WSLENV:}LNRA_DIR:LNRA_BROWSER:LNRA_NO_AUTOMATE:LNRA_NO_OPEN:LNRA_NO_CLIPBOARD:LNRA_USER_DATA_DIR:LNRA_DEBUG"
+  say "Windows detected: running the Windows installer (install.ps1)..."
+  # Run from a checkout (bash install.sh)? Use the install.ps1 next to it. Piped from curl? Fetch it.
+  here=""
+  [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ] && here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  if [ -n "$here" ] && [ -f "$here/install.ps1" ]; then
+    ps1="$here/install.ps1"
+    if command -v cygpath >/dev/null 2>&1; then ps1=$(cygpath -w "$ps1"); elif command -v wslpath >/dev/null 2>&1; then ps1=$(wslpath -w "$ps1"); fi
+    exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ps1"
+  fi
+  exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+    "irm 'https://raw.githubusercontent.com/$REPO/main/install.ps1' | iex"
+fi
 
 for cmd in curl unzip; do
   command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' is required but not installed."
@@ -140,3 +168,5 @@ say "To finish, on $where:"
 say "  1. Turn on Developer mode (top right)"
 say "  2. Click Load unpacked and $pick"
 say "  3. Open https://www.linkedin.com/notifications/ (the bar appears at the bottom)"
+say ""
+say "LNRA_RESULT=manual"

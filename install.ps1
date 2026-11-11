@@ -1,0 +1,583 @@
+# LinkedIn Read-All installer / updater for Windows (Chrome, Edge, Brave, Aside, Chromium).
+#
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex"
+#
+# Works from PowerShell, cmd, Git Bash, or an AI agent's shell. It:
+#   1. downloads the latest release to %USERPROFILE%\LinkedIn-Read-All (replacing an older copy),
+#   2. opens your browser's Extensions page,
+#   3. does the clicks for you through Windows UI Automation: turns on Developer mode, clicks
+#      "Load unpacked" and fills in the folder picker. If the extension is already loaded from
+#      that folder, it presses the extension's Reload button instead.
+# If a click can't be automated (non-English browser, a policy blocks Developer mode, ...), it
+# says which step is left and puts the folder path on your clipboard.
+#
+# Re-run it any time to update. The last line of output is LNRA_RESULT=<value>:
+#   loaded          freshly loaded into the browser
+#   reloaded        it was already loaded from the install folder; files updated and reloaded
+#   other-copy      a "LinkedIn Read-All" from a different folder is already loaded; nothing loaded
+#   manual          files are installed, but the browser step has to be done by hand (see output)
+#   failed          something went wrong (see output)
+#
+# Options (environment variables):
+#   LNRA_DIR=C:\path       install somewhere else (default: %USERPROFILE%\LinkedIn-Read-All)
+#   LNRA_BROWSER=name      chrome | edge | brave | aside | chromium (default: the open one, else Chrome, Aside, Brave, Edge)
+#   LNRA_NO_AUTOMATE=1     don't click anything; print the manual steps
+#   LNRA_NO_OPEN=1         don't open the browser (implies LNRA_NO_AUTOMATE)
+#   LNRA_NO_CLIPBOARD=1    don't touch the clipboard
+#   LNRA_USER_DATA_DIR=    start the browser with this --user-data-dir (for testing)
+
+& {
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+
+$Repo = 'woojinjeon820-ui/linkedin-read-all'
+$Name = 'LinkedIn Read-All'
+if ($env:LNRA_DIR) { $Dest = $env:LNRA_DIR } else { $Dest = Join-Path $env:USERPROFILE 'LinkedIn-Read-All' }
+$Dest = [IO.Path]::GetFullPath($Dest).TrimEnd('\')
+$St = @{ Version = ''; Action = '' }   # shared state (keeps iex runs from leaking globals)
+
+function Say([string]$msg) { Write-Host $msg }
+function Finish([string]$result) { Write-Host ''; Write-Host "LNRA_RESULT=$result" }
+
+function Test-OurManifest([string]$dir) {
+  $m = Join-Path $dir 'manifest.json'
+  if (-not (Test-Path -LiteralPath $m)) { return $false }
+  try { return ((Get-Content -LiteralPath $m -Raw | ConvertFrom-Json).name -eq $Name) } catch { return $false }
+}
+
+# --- 1. Download the latest release ----------------------------------------------------------
+function Install-Files {
+  try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+  Say "Finding the latest release of $Name..."
+  $api = "https://api.github.com/repos/$Repo/releases/latest"
+  $rel = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'linkedin-read-all-installer' }
+  $asset = @($rel.assets | Where-Object { $_.name -like '*.zip' })[0]
+  if (-not $asset) { throw "no .zip found in the latest release of $Repo." }
+  $St.Version = ($rel.tag_name -replace '^v', '')
+
+  $tmp = Join-Path ([IO.Path]::GetTempPath()) ('lnra-' + [guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $tmp | Out-Null
+  try {
+    $zip = Join-Path $tmp 'ext.zip'
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
+    Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $tmp 'ext')
+    if (-not (Test-OurManifest (Join-Path $tmp 'ext'))) { throw "the download doesn't look like $Name." }
+
+    if (Test-Path -LiteralPath $Dest) {
+      if (-not (Test-OurManifest $Dest)) { throw "$Dest already exists and isn't $Name. Move it, or set LNRA_DIR to another folder." }
+      $St.Action = 'Updated'
+    } else {
+      $St.Action = 'Installed'
+    }
+    $parent = Split-Path -Parent $Dest
+    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }
+    # Swap in the new copy. The folder path stays the same, so the extension keeps its ID and data.
+    $old = "$Dest.old"
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
+    if (Test-Path -LiteralPath $Dest) { Rename-Item -LiteralPath $Dest -NewName (Split-Path -Leaf $old) }
+    Move-Item -LiteralPath (Join-Path $tmp 'ext') -Destination $Dest
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue }
+  } finally {
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  Say "$($St.Action) $Name v$($St.Version) in: $Dest"
+}
+
+# --- 2. Pick the browser ---------------------------------------------------------------------
+function Get-AppPath([string]$exe) {
+  foreach ($hive in 'HKCU:', 'HKLM:') {
+    try {
+      $p = (Get-ItemProperty -LiteralPath "$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$exe" -ErrorAction Stop).'(default)'
+      if ($p) { return $p.Trim('"') }
+    } catch {}
+  }
+}
+$Browsers = [ordered]@{
+  chrome   = @{ Label = 'Google Chrome';  Proc = 'chrome'; Frag = '\Google\Chrome\';  Page = 'chrome://extensions/'
+                Paths = @("$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe", (Get-AppPath 'chrome.exe'))
+                Data  = "$env:LOCALAPPDATA\Google\Chrome\User Data" }
+  edge     = @{ Label = 'Microsoft Edge'; Proc = 'msedge'; Frag = '\Microsoft\Edge\'; Page = 'edge://extensions/'
+                Paths = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe", (Get-AppPath 'msedge.exe'))
+                Data  = "$env:LOCALAPPDATA\Microsoft\Edge\User Data" }
+  brave    = @{ Label = 'Brave';          Proc = 'brave';  Frag = '\BraveSoftware\';  Page = 'brave://extensions/'
+                Paths = @("$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe", "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\Application\brave.exe", (Get-AppPath 'brave.exe'))
+                Data  = "$env:LOCALAPPDATA\BraveSoftware\Brave-Browser\User Data" }
+  aside    = @{ Label = 'Aside';          Proc = 'Aside';  Frag = '\Aside\';          Page = 'chrome://extensions/'
+                Paths = @("$env:ProgramFiles\Aside\Application\Aside.exe", "$env:LOCALAPPDATA\Aside\Application\Aside.exe", (Get-AppPath 'Aside.exe'))
+                Data  = "$env:LOCALAPPDATA\Aside\User Data" }
+  chromium = @{ Label = 'Chromium';       Proc = 'chrome'; Frag = '\Chromium\';       Page = 'chrome://extensions/'
+                Paths = @("$env:LOCALAPPDATA\Chromium\Application\chrome.exe")
+                Data  = "$env:LOCALAPPDATA\Chromium\User Data" }
+}
+
+function Get-BrowserProcs($b) {
+  @(Get-Process -Name $b.Proc -ErrorAction SilentlyContinue | Where-Object { (-not $_.Path) -or ($_.Path -like "*$($b.Frag)*") })
+}
+function Get-BrowserExe($b) {
+  $running = @(Get-BrowserProcs $b | Where-Object { $_.Path })[0]
+  if ($running) { return $running.Path }
+  foreach ($p in $b.Paths) { if ($p -and (Test-Path -LiteralPath $p)) { return $p } }
+}
+function Test-BrowserOpen($b) { [bool](@(Get-BrowserProcs $b | Where-Object { $_.MainWindowHandle -ne 0 }).Count) }
+
+function Select-Browser {
+  if ($env:LNRA_BROWSER) {
+    $k = $env:LNRA_BROWSER.ToLower()
+    if (-not $Browsers.Contains($k)) { throw "LNRA_BROWSER must be one of: $($Browsers.Keys -join ', ')." }
+    return $k
+  }
+  # Prefer a browser with an open window (Edge often runs in the background without one).
+  foreach ($k in 'aside', 'chrome', 'brave', 'edge', 'chromium') { if ((Get-BrowserExe $Browsers[$k]) -and (Test-BrowserOpen $Browsers[$k])) { return $k } }
+  foreach ($k in 'chrome', 'aside', 'brave', 'edge', 'chromium') { if (Get-BrowserExe $Browsers[$k]) { return $k } }
+}
+
+# Read-only look at the browser's profile files: folders this extension is loaded unpacked from.
+# Returns $null if no profile could be read.
+function Get-LoadedCopies($b) {
+  $data = $b.Data
+  if ($env:LNRA_USER_DATA_DIR) { $data = $env:LNRA_USER_DATA_DIR }
+  if (-not $data -or -not (Test-Path -LiteralPath $data)) { return $null }
+  $re = New-Object Text.RegularExpressions.Regex('"path":\s*"((?:[^"\\]|\\.)*)"')
+  $readAny = $false
+  $dirs = @()
+  foreach ($prof in Get-ChildItem -LiteralPath $data -Directory -ErrorAction SilentlyContinue) {
+    foreach ($f in 'Secure Preferences', 'Preferences') {
+      $file = Join-Path $prof.FullName $f
+      if (-not (Test-Path -LiteralPath $file)) { continue }
+      try { $text = [IO.File]::ReadAllText($file); $readAny = $true } catch { continue }
+      foreach ($m in $re.Matches($text)) {
+        $dir = $m.Groups[1].Value -replace '\\\\', '\'
+        if ([IO.Path]::IsPathRooted($dir) -and (Test-OurManifest $dir)) { $dirs += $dir.TrimEnd('\') }
+      }
+    }
+  }
+  if (-not $readAny) { return $null }
+  return ,@($dirs | Sort-Object -Unique)
+}
+
+# $true / $false, or $null if no profile could be read.
+function Test-LoadedFromDest($b) {
+  $copies = Get-LoadedCopies $b
+  if ($null -eq $copies) { return $null }
+  return [bool](@($copies | Where-Object { $_ -eq $Dest }).Count)
+}
+
+function Test-InGitRepo([string]$dir) {
+  $d = $dir
+  while ($d) {
+    if (Test-Path -LiteralPath (Join-Path $d '.git')) { return $true }
+    $d = Split-Path -Parent $d
+  }
+  return $false
+}
+
+# --- 3. UI Automation ------------------------------------------------------------------------
+function Wait-For([scriptblock]$probe, [int]$seconds) {
+  $deadline = (Get-Date).AddSeconds($seconds)
+  do {
+    $r = $null
+    try { $r = & $probe } catch {}
+    if ($r) { return $r }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $deadline)
+  return $null
+}
+
+function Get-Pattern($el, $pattern) {
+  [object]$p = $null
+  if ($el.TryGetCurrentPattern($pattern, [ref]$p)) { return $p }
+  return $null
+}
+
+function Find-Named($el, [string]$text, $type) {
+  $c = New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $text)
+  if ($type) {
+    $c = New-Object System.Windows.Automation.AndCondition($c, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $type)))
+  }
+  foreach ($x in $el.FindAll($Scope::Descendants, $c)) { $x }  # callers wrap the result in @()
+}
+
+function Get-TopWindows($b) {
+  $ids = @(Get-BrowserProcs $b | ForEach-Object { $_.Id })
+  foreach ($w in $AE::RootElement.FindAll($Scope::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+    try { if ($ids -contains $w.Current.ProcessId) { $w } } catch {}
+  }
+}
+
+function Get-ExtWindow($b) {
+  foreach ($w in (Get-TopWindows $b)) {
+    $n = ''; try { $n = $w.Current.Name } catch {}
+    if ($n -like 'Extensions*') { return $w }
+  }
+}
+
+function Set-Foreground($window) {
+  $h = [IntPtr]$window.Current.NativeWindowHandle
+  if ([LNRA.Native]::GetForegroundWindow() -eq $h) { return $true }
+  try { $window.SetFocus() } catch {}
+  [void][LNRA.Native]::ShowWindow($h, 9)  # SW_RESTORE, in case it's minimized
+  # Windows only lets the foreground app hand over focus; a tap of Alt counts as input from us.
+  [LNRA.Native]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+  [LNRA.Native]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+  [void][LNRA.Native]::SetForegroundWindow($h)
+  Start-Sleep -Milliseconds 300
+  return ([LNRA.Native]::GetForegroundWindow() -eq $h)
+}
+
+# Chrome ignores chrome:// addresses passed on its command line, so type it in the address bar.
+# Reuses an empty New Tab (the one Chrome just opened for us), otherwise opens a new tab, so the
+# tab you were looking at is left alone.
+function Open-ExtPageByTyping($b) {
+  $win = @(Get-TopWindows $b | Where-Object { $_.Current.ClassName -like 'Chrome_WidgetWin*' -and $_.Current.Name })[0]
+  if (-not $win) { return $false }
+  if (-not (Set-Foreground $win)) { return $false }
+  if ($win.Current.Name -like 'New Tab*') { $keys = '^l' } else { $keys = '^t' }
+  [System.Windows.Forms.SendKeys]::SendWait($keys)
+  Start-Sleep -Milliseconds 500
+  [System.Windows.Forms.SendKeys]::SendWait($b.Page)
+  Start-Sleep -Milliseconds 200
+  [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
+  return $true
+}
+
+function Invoke-Click($el, $window, [switch]$Mouse) {
+  if (-not $Mouse) {
+    $inv = Get-Pattern $el ([System.Windows.Automation.InvokePattern]::Pattern)
+    if ($inv) { $inv.Invoke(); return }
+    $tog = Get-Pattern $el ([System.Windows.Automation.TogglePattern]::Pattern)
+    if ($tog) { $tog.Toggle(); return }
+  }
+  # A real mouse click on the element.
+  if ($window) { [void](Set-Foreground $window) }
+  Start-Sleep -Milliseconds 300
+  $r = $el.Current.BoundingRectangle
+  [void][LNRA.Native]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
+  [LNRA.Native]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+  [LNRA.Native]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Write-DebugTree($el, [string]$title) {
+  if (-not $env:LNRA_DEBUG) { return }
+  Say "[debug] $title"
+  $n = 0
+  foreach ($e in $el.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+    if (++$n -gt 150) { break }
+    try {
+      $c = $e.Current
+      if (-not $c.Name -and $c.ControlType -ne $CT::Button) { continue }
+      $pats = ($e.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName -replace 'PatternIdentifiers.Pattern', '' }) -join ','
+      Say "[debug]   $($c.ControlType.ProgrammaticName) '$($c.Name)' id=$($c.AutomationId) [$pats] offscreen=$($c.IsOffscreen)"
+    } catch {}
+  }
+}
+
+# The web page itself, so we never match the browser's own toolbar (its Reload button, a pinned
+# extension button, ...).
+function Get-PageDoc($win) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Document)
+  $docs = @($win.FindAll($Scope::Descendants, $cond))
+  foreach ($d in $docs) { try { if (@(Find-Named $d 'Developer mode').Count) { return $d } } catch {} }
+  # Edge hides the switch in a collapsed side menu; take the page anyway.
+  foreach ($d in $docs) { try { if ($d.Current.Name -like 'Extensions*') { return $d } } catch {} }
+}
+
+function Get-LoadButton($win) {
+  @(Find-Named $win 'Load unpacked' $CT::Button | Where-Object { -not $_.Current.IsOffscreen })[0]
+}
+
+function Get-DevModeControls($page) {
+  $all = @(Find-Named $page 'Developer mode' | Where-Object { $_.Current.ControlType -ne $CT::Text -and -not $_.Current.IsOffscreen })
+  # Real switches first, then buttons, then anything else carrying the name.
+  $switches = @($all | Where-Object { Get-Pattern $_ ([System.Windows.Automation.TogglePattern]::Pattern) })
+  $buttons = @($all | Where-Object { $_.Current.ControlType -eq $CT::Button -and $switches -notcontains $_ })
+  $rest = @($all | Where-Object { $switches -notcontains $_ -and $buttons -notcontains $_ })
+  @($switches) + @($buttons) + @($rest)
+}
+
+# Edge (and narrow windows) put Developer mode in a side menu behind a menu button.
+function Show-SideMenu($page, $win) {
+  [void][LNRA.Native]::ShowWindow([IntPtr]$win.Current.NativeWindowHandle, 3)  # SW_MAXIMIZE
+  if (Wait-For { @(Get-DevModeControls $page).Count } 3) { return $true }
+  $menu = @(Find-All-Buttons $page | Where-Object { $_.Current.Name -match 'menu|navigation|sidebar' -and -not $_.Current.IsOffscreen })[0]
+  if (-not $menu) { return $false }
+  Invoke-Click $menu $win
+  return [bool](Wait-For { @(Get-DevModeControls $page).Count } 4)
+}
+
+function Find-All-Buttons($el) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Button)
+  foreach ($x in $el.FindAll($Scope::Descendants, $cond)) { $x }
+}
+
+function Enable-DevMode($page, $win) {
+  if (Get-LoadButton $page) { return 'on' }
+  $controls = @(Wait-For { $c = @(Get-DevModeControls $page); if ($c.Count) { $c } } 6 | Where-Object { $_ })
+  if (-not $controls.Count) {
+    if (Show-SideMenu $page $win) { $controls = @(Get-DevModeControls $page) }
+    if (Get-LoadButton $page) { return 'on' }
+  }
+  Write-DebugTree $page 'extensions page'
+  if (-not $controls.Count) { return 'no-toggle' }
+
+  $tog = Get-Pattern $controls[0] ([System.Windows.Automation.TogglePattern]::Pattern)
+  if ($tog -and $tog.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) {
+    if (Wait-For { Get-LoadButton $page } 3) { return 'on' }
+  }
+  if (@($controls | Where-Object { $_.Current.IsEnabled }).Count -eq 0) { return 'blocked' }
+  Say 'Turning on Developer mode...'
+  # Try each control, by UI Automation and then with a real click, until Load unpacked shows up.
+  # Once a switch reports On, stop clicking (another click would turn it back off) and just wait.
+  $isOn = { @($controls | Where-Object {
+      $t = Get-Pattern $_ ([System.Windows.Automation.TogglePattern]::Pattern)
+      $t -and $t.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On }).Count }
+  foreach ($useMouse in $false, $true) {
+    foreach ($c in $controls) {
+      if (-not $c.Current.IsEnabled) { continue }
+      try { Invoke-Click $c $win -Mouse:$useMouse } catch { continue }
+      if (Wait-For { Get-LoadButton $page } 4) { return 'on' }
+      if (& $isOn) {
+        if (Wait-For { Get-LoadButton $page } 3) { return 'on' }
+        # Edge: the side menu we opened covers the page and hides it from UI Automation. Close it.
+        if (Set-Foreground $win) { [System.Windows.Forms.SendKeys]::SendWait('{ESC}') }
+        if (Wait-For { Get-LoadButton $page } 5) { return 'on' }
+        Write-DebugTree $page 'Developer mode is on but no Load unpacked button'
+        return 'failed'
+      }
+    }
+  }
+  Write-DebugTree $page 'extensions page after trying Developer mode'
+  return 'failed'
+}
+
+function Get-FolderDialog($b) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ClassNameProperty, '#32770')
+  foreach ($w in (Get-TopWindows $b)) {
+    try { if ($w.Current.ClassName -eq '#32770') { return $w } } catch {}
+    $d = $w.FindFirst($Scope::Children, $cond)
+    if ($d) { return $d }
+  }
+}
+
+# The folder picker is a classic Win32 dialog. UI Automation often sees its Folder box (id 1152)
+# and Select Folder button (id 1) as bare panes, so fall back to Win32 messages on their handles.
+function Complete-FolderDialog($dlg) {
+  # A closed dialog's UI Automation element can keep answering, so ask Windows about its handle.
+  $hDlg = [IntPtr]$dlg.Current.NativeWindowHandle
+  $isOpen = { [LNRA.Native]::IsWindow($hDlg) -and [LNRA.Native]::IsWindowVisible($hDlg) }
+  $idCond = { param($id) New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, $id) }
+  # The window shows up before its controls do, so wait for the Folder box.
+  $edit = Wait-For {
+    $e = $dlg.FindFirst($Scope::Descendants, (& $idCond '1152'))
+    if (-not $e) { $e = $dlg.FindFirst($Scope::Descendants, (& $idCond '1148')) }
+    $e
+  } 10
+  if ($env:LNRA_DEBUG) {
+    Say "[debug] dialog: '$($dlg.Current.Name)' class=$($dlg.Current.ClassName)"
+    foreach ($e in $dlg.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+      try { Say "[debug]   $($e.Current.ControlType.ProgrammaticName) '$($e.Current.Name)' id=$($e.Current.AutomationId) hwnd=$($e.Current.NativeWindowHandle)" } catch {}
+    }
+  }
+  # Without the folder box we'd confirm whatever folder the dialog happens to show, so stop.
+  if (-not $edit) { return $false }
+
+  $val = Get-Pattern $edit ([System.Windows.Automation.ValuePattern]::Pattern)
+  $hEdit = [IntPtr]$edit.Current.NativeWindowHandle
+  if ($val) { $val.SetValue($Dest) }
+  elseif ($hEdit -ne [IntPtr]::Zero) { [void][LNRA.Native]::SendMessage($hEdit, 0x000C, [IntPtr]::Zero, $Dest) }  # WM_SETTEXT
+  else { return $false }
+
+  for ($i = 0; $i -lt 3 -and (& $isOpen); $i++) {
+    $ok = $dlg.FindFirst($Scope::Descendants, (& $idCond '1'))
+    if (-not $ok) { return $false }
+    $inv = Get-Pattern $ok ([System.Windows.Automation.InvokePattern]::Pattern)
+    $hOk = [IntPtr]$ok.Current.NativeWindowHandle
+    if ($inv) { $inv.Invoke() }
+    elseif ($hOk -ne [IntPtr]::Zero) { [void][LNRA.Native]::PostMessage($hOk, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) }  # BM_CLICK
+    else { Invoke-Click $ok $dlg }
+    # If Windows only navigated into the folder, the next press selects it.
+    [void](Wait-For { -not (& $isOpen) } 3)
+  }
+  return -not (& $isOpen)
+}
+
+# Press the Reload button on our extension's card (the closest ancestor with exactly one Reload).
+function Invoke-CardReload($page, $win) {
+  $label = @(Find-Named $page $Name)[0]
+  if (-not $label) { return $false }
+  $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+  $node = $label
+  for ($i = 0; $i -lt 8 -and $node; $i++) {
+    $node = $walker.GetParent($node)
+    if (-not $node -or $node -eq $page) { break }
+    $reloads = @(Find-Named $node 'Reload' $CT::Button)
+    if ($reloads.Count -gt 1) { return $false }
+    if ($reloads.Count -eq 1) { Invoke-Click $reloads[0] $win; return $true }
+  }
+  return $false
+}
+
+# Does the whole browser step. Returns: loaded | reloaded | other-copy | a reason it stopped.
+function Invoke-BrowserStep($b) {
+  try {
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
+  } catch {
+    Say "(Windows UI Automation isn't available here: $($_.Exception.Message))"
+    return 'no-uia'
+  }
+  try {
+    Add-Type -Namespace LNRA -Name Native -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+[DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
+[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+'@
+  } catch {}  # already defined by an earlier run in this session
+  # Seen by the helper functions through PowerShell's dynamic scoping.
+  $AE = [System.Windows.Automation.AutomationElement]
+  $Scope = [System.Windows.Automation.TreeScope]
+  $CT = [System.Windows.Automation.ControlType]
+
+  Say "Doing the browser clicks for you. Please don't use the mouse or keyboard for a few seconds..."
+  $win = Wait-For { Get-ExtWindow $b } 6
+  if (-not $win) {
+    # Give the browser a moment to finish starting, then type the address in.
+    [void](Wait-For { @(Get-TopWindows $b | Where-Object { $_.Current.Name }).Count } 20)
+    Start-Sleep -Seconds 1
+    Say "Opening $($b.Page)..."
+    if (Open-ExtPageByTyping $b) { $win = Wait-For { Get-ExtWindow $b } 10 }
+  }
+  if (-not $win) {
+    Say "Waiting for the Extensions page. If it isn't open, type $($b.Page) into $($b.Label)'s address bar."
+    $win = Wait-For { Get-ExtWindow $b } 90
+  }
+  if (-not $win) { return 'no-window' }
+  $page = Wait-For { Get-PageDoc $win } 20
+  if (-not $page) { return 'no-page' }
+  Say 'Found the Extensions page.'
+
+  $dev = Enable-DevMode $page $win
+  if ($dev -eq 'blocked') { return 'devmode-blocked' }
+  if ($dev -ne 'on') { return "devmode-$dev" }
+  Start-Sleep -Milliseconds 800  # let the extension list render
+
+  if (@(Find-Named $page $Name).Count) {
+    $ours = Test-LoadedFromDest $b
+    if ($ours -eq $false) { return 'other-copy' }
+    if (Invoke-CardReload $page $win) { Start-Sleep -Seconds 1; return 'reloaded' }
+    return 'reload-failed'
+  }
+
+  $btn = Get-LoadButton $page
+  if (-not $btn) { return 'no-load-button' }
+  Say 'Clicking Load unpacked...'
+  Invoke-Click $btn $win
+  $dlg = Wait-For { Get-FolderDialog $b } 10
+  if (-not $dlg) { return 'no-dialog' }
+  Say "Choosing $Dest in the folder picker..."
+  if (-not (Complete-FolderDialog $dlg)) { return 'dialog-stuck' }
+  if (Wait-For { @(Find-Named $page $Name).Count } 15) { return 'loaded' }
+  if (Wait-For { Test-LoadedFromDest $b } 10) { return 'loaded' }
+  return 'not-listed'
+}
+
+# --- Main ------------------------------------------------------------------------------------
+try {
+  $key = Select-Browser
+  $b = $null; if ($key) { $b = $Browsers[$key] }
+
+  # Already loaded by hand from another folder (say, an unzipped download)? Update that copy in
+  # place so the browser keeps the same extension, with its read / unread state. Never a git
+  # checkout, though: that's someone developing the extension.
+  if ($b -and -not $env:LNRA_DIR) {
+    $copies = Get-LoadedCopies $b
+    if ($copies -and -not ($copies -contains $Dest)) {
+      $adopt = @($copies | Where-Object { -not (Test-InGitRepo $_) })[0]
+      if ($adopt) {
+        Say "$Name is already loaded in $($b.Label) from $adopt. Updating that copy."
+        $Dest = $adopt
+      }
+    }
+  }
+
+  Install-Files
+} catch {
+  Say "Error: $($_.Exception.Message)"
+  Finish 'failed'
+  return
+}
+
+$copied = $false
+if (-not $env:LNRA_NO_CLIPBOARD) { try { Set-Clipboard -Value $Dest; $copied = $true } catch {} }
+
+$opened = $false
+if ($b -and -not $env:LNRA_NO_OPEN) {
+  $exe = Get-BrowserExe $b
+  $argv = @()
+  if ($env:LNRA_USER_DATA_DIR) { $argv += "--user-data-dir=`"$($env:LNRA_USER_DATA_DIR)`"", '--no-first-run', '--no-default-browser-check' }
+  $argv += $b.Page
+  try { Start-Process -FilePath $exe -ArgumentList $argv; $opened = $true; Say "Opened $($b.Page) in $($b.Label)." } catch { Say "Couldn't start $($b.Label): $($_.Exception.Message)" }
+}
+
+$outcome = 'skipped'
+if ($opened -and -not $env:LNRA_NO_AUTOMATE) {
+  try { $outcome = Invoke-BrowserStep $b } catch { $outcome = "error: $($_.Exception.Message)" }
+}
+
+switch ($outcome) {
+  'loaded' {
+    Say "Loaded $Name into $($b.Label)."
+    Say 'Open https://www.linkedin.com/notifications/ - a dark bar with "Mark all as read" appears at the bottom.'
+    Finish 'loaded'; return
+  }
+  'reloaded' {
+    Say "$Name was already loaded from $Dest. Updated it to v$($St.Version) and reloaded it."
+    Say 'Refresh any open LinkedIn tabs to pick up the new version.'
+    Finish 'reloaded'; return
+  }
+  'other-copy' {
+    Say "$($b.Label) already has a copy of $Name loaded from a different folder (a git checkout, or one this"
+    Say "installer can't update). Two copies conflict, so nothing was loaded. To use this install instead, remove"
+    Say "the old one on $($b.Page) (its card's Remove button), then run this installer again."
+    Finish 'other-copy'; return
+  }
+}
+
+# Anything else: the files are in place, the browser step is left.
+if ($outcome -ne 'skipped') {
+  $why = @{
+    'no-uia'          = "Windows UI Automation isn't available in this shell."
+    'no-window'       = $(if ($key -eq 'aside') { "couldn't open Aside's Extensions page. If Aside is asking you to sign in, finish that first, then run this installer again." } else { "couldn't find the browser's Extensions page." })
+    'no-page'         = "couldn't read the Extensions page (its accessibility tree didn't load)."
+    'devmode-blocked' = 'Developer mode is turned off by a policy (school or work managed browser). Ask your admin, or use another browser.'
+    'no-load-button'  = "couldn't find the Load unpacked button."
+    'no-dialog'       = "the folder picker didn't open."
+    'dialog-stuck'    = "couldn't fill in the folder picker."
+    'reload-failed'   = "couldn't press the extension's Reload button."
+    'not-listed'      = "the extension didn't show up after loading (the page may show an error)."
+  }[$outcome]
+  if (-not $why) {
+    if ($outcome -like 'devmode-*') { $why = "couldn't turn on Developer mode (an English browser UI is needed for the automatic clicks)." }
+    else { $why = $outcome }
+  }
+  Say ''
+  Say "Couldn't finish automatically: $why"
+}
+if ($b) { $where = "$($b.Page) in $($b.Label)" } else { $where = 'chrome://extensions (edge://extensions in Edge) in your browser' }
+if ($copied) { $pathHint = "$Dest (it's on your clipboard, so Ctrl+V)" } else { $pathHint = $Dest }
+Say ''
+if ($outcome -eq 'reload-failed' -or ($St.Action -eq 'Updated' -and $outcome -eq 'skipped')) {
+  Say "If $Name is already loaded: on $where, press the reload icon on its card. Done."
+  Say 'First time loading it? Follow the steps below.'
+}
+Say "To finish, on ${where}:"
+Say '  1. Turn on Developer mode'
+Say "  2. Click Load unpacked, then choose the folder $pathHint and click Select Folder"
+Say '  3. Open https://www.linkedin.com/notifications/ (the bar appears at the bottom)'
+Finish 'manual'
+}
