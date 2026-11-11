@@ -193,18 +193,14 @@ function Find-Named($el, [string]$text, $type) {
   if ($type) {
     $c = New-Object System.Windows.Automation.AndCondition($c, (New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $type)))
   }
-  $found = $el.FindAll($Scope::Descendants, $c)
-  $out = @(); foreach ($x in $found) { $out += $x }
-  return ,$out
+  foreach ($x in $el.FindAll($Scope::Descendants, $c)) { $x }  # callers wrap the result in @()
 }
 
 function Get-TopWindows($b) {
   $ids = @(Get-BrowserProcs $b | ForEach-Object { $_.Id })
-  $out = @()
   foreach ($w in $AE::RootElement.FindAll($Scope::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
-    try { if ($ids -contains $w.Current.ProcessId) { $out += $w } } catch {}
+    try { if ($ids -contains $w.Current.ProcessId) { $w } } catch {}
   }
-  return ,$out
 }
 
 function Get-ExtWindow($b) {
@@ -331,7 +327,7 @@ function Invoke-CardReload($page, $win) {
   for ($i = 0; $i -lt 8 -and $node; $i++) {
     $node = $walker.GetParent($node)
     if (-not $node -or $node -eq $page) { break }
-    $reloads = Find-Named $node 'Reload' $CT::Button
+    $reloads = @(Find-Named $node 'Reload' $CT::Button)
     if ($reloads.Count -gt 1) { return $false }
     if ($reloads.Count -eq 1) { Invoke-Click $reloads[0] $win; return $true }
   }
