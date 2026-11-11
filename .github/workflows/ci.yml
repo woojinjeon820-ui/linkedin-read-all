@@ -22,8 +22,16 @@ jobs:
   # download, Developer mode, Load unpacked, folder picker. Then again to check the update path.
   windows-install:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, edge, brave]
     steps:
       - uses: actions/checkout@v4
+      - name: Install Brave
+        if: matrix.browser == 'brave'
+        shell: powershell
+        run: choco install brave -y --no-progress
       - name: Parse install.ps1
         shell: powershell
         run: |
@@ -34,8 +42,8 @@ jobs:
         shell: powershell
         env:
           LNRA_DIR: ${{ runner.temp }}\LinkedIn-Read-All
-          LNRA_USER_DATA_DIR: ${{ runner.temp }}\chrome-profile
-          LNRA_BROWSER: chrome
+          LNRA_USER_DATA_DIR: ${{ runner.temp }}\browser-profile
+          LNRA_BROWSER: ${{ matrix.browser }}
           LNRA_NO_CLIPBOARD: '1'
           LNRA_DEBUG: '1'
         run: |
@@ -49,8 +57,8 @@ jobs:
         shell: powershell
         env:
           LNRA_DIR: ${{ runner.temp }}\LinkedIn-Read-All
-          LNRA_USER_DATA_DIR: ${{ runner.temp }}\chrome-profile
-          LNRA_BROWSER: chrome
+          LNRA_USER_DATA_DIR: ${{ runner.temp }}\browser-profile
+          LNRA_BROWSER: ${{ matrix.browser }}
           LNRA_NO_CLIPBOARD: '1'
           LNRA_DEBUG: '1'
         run: |
@@ -61,8 +69,8 @@ jobs:
       - name: Git Bash run adopts the copy that's already loaded
         shell: bash
         env:
-          LNRA_USER_DATA_DIR: ${{ runner.temp }}\chrome-profile
-          LNRA_BROWSER: chrome
+          LNRA_USER_DATA_DIR: ${{ runner.temp }}\browser-profile
+          LNRA_BROWSER: ${{ matrix.browser }}
           LNRA_NO_CLIPBOARD: '1'
         run: |
           bash ./install.sh 2>&1 | tee third.txt
@@ -81,7 +89,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: windows-install-debug
+          name: windows-install-debug-${{ matrix.browser }}
           path: |
             screen.png
             first.txt
