@@ -292,36 +292,39 @@ function Get-FolderDialog($b) {
   }
 }
 
-function Complete-FolderDialog($dlg, $win) {
-  $editCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)
+# The folder picker is a classic Win32 dialog. UI Automation often sees its Folder box (id 1152)
+# and Select Folder button (id 1) as bare panes, so fall back to Win32 messages on their handles.
+function Complete-FolderDialog($dlg) {
+  $idCond = { param($id) New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, $id) }
   # The window shows up before its controls do, so wait for the Folder box.
   $edit = Wait-For {
-    @($dlg.FindAll($Scope::Descendants, $editCond) | Where-Object {
-      @('1148', '1152') -contains $_.Current.AutomationId -or $_.Current.Name -match '^(Folder|File name)'
-    })[0]
+    $e = $dlg.FindFirst($Scope::Descendants, (& $idCond '1152'))
+    if (-not $e) { $e = $dlg.FindFirst($Scope::Descendants, (& $idCond '1148')) }
+    $e
   } 10
   if ($env:LNRA_DEBUG) {
     Say "[debug] dialog: '$($dlg.Current.Name)' class=$($dlg.Current.ClassName)"
     foreach ($e in $dlg.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
-      try { Say "[debug]   $($e.Current.ControlType.ProgrammaticName) '$($e.Current.Name)' id=$($e.Current.AutomationId)" } catch {}
+      try { Say "[debug]   $($e.Current.ControlType.ProgrammaticName) '$($e.Current.Name)' id=$($e.Current.AutomationId) hwnd=$($e.Current.NativeWindowHandle)" } catch {}
     }
   }
   # Without the folder box we'd confirm whatever folder the dialog happens to show, so stop.
   if (-not $edit) { return $false }
-  $okCond = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, '1')
+
+  $val = Get-Pattern $edit ([System.Windows.Automation.ValuePattern]::Pattern)
+  $hEdit = [IntPtr]$edit.Current.NativeWindowHandle
+  if ($val) { $val.SetValue($Dest) }
+  elseif ($hEdit -ne [IntPtr]::Zero) { [void][LNRA.Native]::SendMessage($hEdit, 0x000C, [IntPtr]::Zero, $Dest) }  # WM_SETTEXT
+  else { return $false }
+
   for ($i = 0; $i -lt 3 -and (Test-Alive $dlg); $i++) {
-    if ($i -eq 0) {
-      $val = Get-Pattern $edit ([System.Windows.Automation.ValuePattern]::Pattern)
-      if ($val) {
-        $val.SetValue($Dest)
-      } else {
-        $edit.SetFocus()
-        [System.Windows.Forms.SendKeys]::SendWait('^a')
-        [System.Windows.Forms.SendKeys]::SendWait(($Dest -replace '([+^%~(){}\[\]])', '{$1}'))
-      }
-    }
-    $ok = $dlg.FindFirst($Scope::Descendants, $okCond)
-    if ($ok) { Invoke-Click $ok $dlg } else { $edit.SetFocus(); [System.Windows.Forms.SendKeys]::SendWait('{ENTER}') }
+    $ok = $dlg.FindFirst($Scope::Descendants, (& $idCond '1'))
+    if (-not $ok) { return $false }
+    $inv = Get-Pattern $ok ([System.Windows.Automation.InvokePattern]::Pattern)
+    $hOk = [IntPtr]$ok.Current.NativeWindowHandle
+    if ($inv) { $inv.Invoke() }
+    elseif ($hOk -ne [IntPtr]::Zero) { [void][LNRA.Native]::PostMessage($hOk, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) }  # BM_CLICK
+    else { Invoke-Click $ok $dlg }
     # If Windows only navigated into the folder, the next press selects it.
     [void](Wait-For { -not (Test-Alive $dlg) } 3)
   }
@@ -360,6 +363,8 @@ function Invoke-BrowserStep($b) {
 [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
+[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 '@
   } catch {}  # already defined by an earlier run in this session
   # Seen by the helper functions through PowerShell's dynamic scoping.
@@ -404,7 +409,7 @@ function Invoke-BrowserStep($b) {
   $dlg = Wait-For { Get-FolderDialog $b } 10
   if (-not $dlg) { return 'no-dialog' }
   Say "Choosing $Dest in the folder picker..."
-  if (-not (Complete-FolderDialog $dlg $win)) { return 'dialog-stuck' }
+  if (-not (Complete-FolderDialog $dlg)) { return 'dialog-stuck' }
   if (Wait-For { @(Find-Named $page $Name).Count } 15) { return 'loaded' }
   if (Wait-For { Test-LoadedFromDest $b } 10) { return 'loaded' }
   return 'not-listed'
