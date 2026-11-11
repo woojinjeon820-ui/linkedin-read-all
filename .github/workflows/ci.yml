@@ -17,3 +17,57 @@ jobs:
       - run: for f in extension/src/*.js extension/popup/popup.js; do node --check "$f"; done
       - run: node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json'))"
       - run: bash -n install.sh
+
+  # Runs the Windows installer end to end against a real Chrome with a throwaway profile:
+  # download, Developer mode, Load unpacked, folder picker. Then again to check the update path.
+  windows-install:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse install.ps1
+        shell: powershell
+        run: |
+          $errs = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\install.ps1", [ref]$null, [ref]$errs)
+          if ($errs) { $errs | ForEach-Object { $_.ToString() }; exit 1 }
+      - name: First install loads the extension
+        shell: powershell
+        env:
+          LNRA_DIR: ${{ runner.temp }}\LinkedIn-Read-All
+          LNRA_USER_DATA_DIR: ${{ runner.temp }}\chrome-profile
+          LNRA_BROWSER: chrome
+          LNRA_NO_CLIPBOARD: '1'
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 *>&1 | Tee-Object -FilePath first.txt
+          if (-not (Select-String -Path first.txt -Pattern '^LNRA_RESULT=loaded$' -Quiet)) { exit 1 }
+          Start-Sleep -Seconds 12  # Chrome writes its profile files lazily
+          $prefs = Get-Content "$env:LNRA_USER_DATA_DIR\Default\Secure Preferences", "$env:LNRA_USER_DATA_DIR\Default\Preferences" -Raw -ErrorAction SilentlyContinue
+          $needle = ($env:LNRA_DIR -replace '\\', '\\')
+          if (-not (($prefs -join '').ToLower().Contains($needle.ToLower()))) { Write-Host "extension path not in Chrome's profile"; exit 1 }
+      - name: Second run updates and reloads it
+        shell: powershell
+        env:
+          LNRA_DIR: ${{ runner.temp }}\LinkedIn-Read-All
+          LNRA_USER_DATA_DIR: ${{ runner.temp }}\chrome-profile
+          LNRA_BROWSER: chrome
+          LNRA_NO_CLIPBOARD: '1'
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 *>&1 | Tee-Object -FilePath second.txt
+          if (-not (Select-String -Path second.txt -Pattern '^LNRA_RESULT=reloaded$' -Quiet)) { exit 1 }
+      - name: Screenshot on failure
+        if: failure()
+        shell: powershell
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $r = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $r.Width, $r.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($r.Location, [System.Drawing.Point]::Empty, $r.Size)
+          $bmp.Save("$PWD\screen.png")
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-install-debug
+          path: |
+            screen.png
+            first.txt
+            second.txt

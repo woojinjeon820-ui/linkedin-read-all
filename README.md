@@ -19,37 +19,47 @@ Paste this into **Claude Code** (or Claude with computer use or Claude in Chrome
 ```text
 Install the "LinkedIn Read-All" browser extension for me from
 https://github.com/woojinjeon820-ui/linkedin-read-all
+Do the whole install yourself. Only hand me a step if you truly can't do it.
 
 1. Find out which browser I use: Chrome, Aside, Edge, Brave or Arc. Prefer the one that's
-   running; ask me if you can't tell. Its extensions page is chrome://extensions
+   open; ask me if you can't tell. Its extensions page is chrome://extensions
    (Aside and Arc too), edge://extensions in Edge, brave://extensions in Brave.
-2. If you can see that page, check whether "LinkedIn Read-All" is already listed. If it is,
-   don't load another copy (two copies conflict). Tell me its version, and its folder if
-   the Details page shows it (don't guess). If it's older than the latest release, run
-   step 3 to update, then press the reload icon on its card. Then skip to step 5.
-3. Read install.sh in that repo, then run it (it puts the install path on my clipboard):
-   curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
-   On Windows: get the .zip asset of the latest release from
-   https://api.github.com/repos/woojinjeon820-ui/linkedin-read-all/releases/latest
-   and extract it to %USERPROFILE%\LinkedIn-Read-All.
-4. Browsers don't let scripts load extensions, so this part takes clicks. If you can control
-   my browser, do them yourself: on the extensions page turn on Developer mode, click
-   "Load unpacked", and pick the LinkedIn-Read-All folder from step 3. The folder picker is
-   a system dialog many agents can't operate. If you can't, ask me to do just that part
-   (on macOS: Cmd+Shift+G, Cmd+V, Enter, Select) and wait. If you can't control the browser
-   at all, walk me through each click and wait for me after each one.
-5. Check that "LinkedIn Read-All" is listed and turned on. Then open
+2. Read the installer for my OS in that repo, then run it. Run it in a normal shell that can
+   reach the internet and my desktop. If your sandbox blocks that, ask me to approve running
+   it outside the sandbox. Don't download or unzip anything by hand.
+   - Windows, from PowerShell, cmd or Git Bash (the script is install.ps1):
+     powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex"
+   - macOS / Linux (the script is install.sh):
+     curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
+   On Windows the script also does the browser clicks itself (Developer mode, Load unpacked,
+   the folder picker, or Reload on an update). Tell me not to touch the mouse or keyboard
+   while it runs. Its last line is LNRA_RESULT=<value>:
+   - loaded or reloaded: done, go to step 4.
+   - other-copy: an older copy from another folder is loaded. Tell me, and offer to remove
+     it (only with my OK), then run the installer again.
+   - manual: the files are installed; the output says which browser step is left. Do step 3.
+   - failed: tell me the error.
+3. Only if the browser step is left (always on macOS / Linux): if the extensions page
+   already lists "LinkedIn Read-All", don't load another copy (two copies conflict). Press
+   the reload icon on its card instead. Otherwise, if you can control my browser, do the
+   clicks yourself: turn on Developer mode, click "Load unpacked", and pick the folder the
+   installer printed. The folder picker is a system dialog many agents can't operate. If
+   you can't, ask me to do just that part (macOS: Cmd+Shift+G, Cmd+V, Enter, Select;
+   Windows: Ctrl+V into the Folder box, Select Folder) and wait. If you can't control the
+   browser at all, walk me through each click and wait for me after each one.
+4. Check that "LinkedIn Read-All" is listed and turned on. Then open
    https://www.linkedin.com/notifications/ (I may need to sign in) and confirm a dark bar
    with "Mark all as read" appears at the bottom of the page. If you check the page's code
    rather than a screenshot, the bar is inside the shadow root of the #lnra-host element,
-   so a plain text search of the page won't find it.
+   so a plain text search of the page won't find it. If you can't see my browser, ask me
+   whether the bar is there.
 
 Don't change, disable or remove other extensions or browser settings. Don't close my
 tabs; you may close tabs you opened yourself. Tell me what you did and anything that
 didn't work.
 ```
 
-The agent runs the installer and, if it can control your browser, does the clicks too. If it can't, it walks you through them.
+The agent runs the installer. On Windows the installer also does the browser clicks itself through Windows UI Automation. On macOS and Linux the agent does the clicks if it can control your browser, and otherwise walks you through them.
 
 ### Do it yourself
 
@@ -67,7 +77,15 @@ The script downloads the latest release to `~/LinkedIn-Read-All`, copies that pa
 
 That last part has to be done by hand: browsers only allow one-click installs from their web stores. To **update**, run the same command again, then press the reload icon on the extension's card. [Read the script](install.sh) before running it if you like. It only writes to `~/LinkedIn-Read-All`.
 
-**Windows, or by hand:** download `linkedin-read-all-<version>.zip` from the [latest release](../../releases/latest), unzip it, open `chrome://extensions` (`edge://extensions` in Edge), turn on Developer mode, click **Load unpacked**, and choose the unzipped folder.
+**Windows, one command** (Chrome, Edge, Brave). Paste it into PowerShell, cmd or Git Bash:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.ps1 | iex"
+```
+
+It downloads the latest release to `%USERPROFILE%\LinkedIn-Read-All` and opens your browser's Extensions page. Then it turns on Developer mode, clicks **Load unpacked** and fills in the folder picker for you, so keep your hands off the mouse for a few seconds. Run it again to update: it replaces the files and presses the extension's **Reload** button. If a click can't be automated (for example, a non-English browser, or a work policy that blocks Developer mode), it tells you which step is left and puts the folder path on your clipboard. [Read the script](install.ps1) first if you like. It only writes to `%USERPROFILE%\LinkedIn-Read-All`, and it only reads your browser profile to see whether the extension is already loaded.
+
+**By hand:** download `linkedin-read-all-<version>.zip` from the [latest release](../../releases/latest), unzip it, open `chrome://extensions` (`edge://extensions` in Edge), turn on Developer mode, click **Load unpacked**, and choose the unzipped folder.
 
 To change the keyboard shortcut, go to `chrome://extensions/shortcuts`.
 
