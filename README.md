@@ -10,6 +10,26 @@ A Chrome extension (Manifest V3) that adds what LinkedIn is missing on its Notif
 
 Works in Google Chrome, Aside, and other Chromium browsers (Edge, Brave, Arc).
 
+## Install
+
+**macOS / Linux, one command** (Chrome, Aside, Edge, Brave, Arc):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/woojinjeon820-ui/linkedin-read-all/main/install.sh | bash
+```
+
+The script downloads the latest release to `~/LinkedIn-Read-All`, copies that path to your clipboard, and opens your browser's Extensions page. Then:
+
+1. Turn on **Developer mode** (top right).
+2. Click **Load unpacked**, press `Cmd+Shift+G`, paste (`Cmd+V`), press Enter, then **Select**.
+3. Open <https://www.linkedin.com/notifications/>. The bar appears at the bottom.
+
+That last part has to be done by hand: browsers only allow one-click installs from their web stores. To **update**, run the same command again, then press the reload icon on the extension's card. [Read the script](install.sh) before running it if you like. It only writes to `~/LinkedIn-Read-All`.
+
+**Windows, or by hand:** download `linkedin-read-all-<version>.zip` from the [latest release](../../releases/latest), unzip it, open `chrome://extensions` (`edge://extensions` in Edge), turn on Developer mode, click **Load unpacked**, and choose the unzipped folder.
+
+To change the keyboard shortcut, go to `chrome://extensions/shortcuts`.
+
 ## How it works (and why)
 
 LinkedIn's notification menu has no per-item "mark as read" or "mark as unread", and LinkedIn clears its own unread styling as soon as you open the page. So the extension keeps its **own** read / unread / kept state for each notification, stored only in your browser (`chrome.storage.local`). Unread items get a blue tint and dot; items you kept unread get an amber tint and a flag.
@@ -19,32 +39,14 @@ LinkedIn's notification menu has no per-item "mark as read" or "mark as unread",
 - Each notification is identified by its link plus its kind (reaction, comment, job alert, and so on). If LinkedIn rolls new reactions into a notification you already read, it stays read.
 - It makes **no network requests** and changes nothing on LinkedIn's servers. It only reads the page and adds its own styling.
 
-## Install
-
-Download `linkedin-read-all-<version>.zip` from the [latest release](../../releases/latest) and unzip it, or clone this repo and use its `extension/` folder.
-
-### Chrome
-1. Open `chrome://extensions`.
-2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and choose the unzipped folder (or `extension/` in this repo).
-4. Open <https://www.linkedin.com/notifications/>. The bar appears at the bottom.
-
-### Aside
-Aside is Chromium-based, so the steps are the same:
-1. Open `chrome://extensions` in Aside (it shows as "Extensions").
-2. Turn on **Developer mode**.
-3. Click **Load unpacked** and choose the `extension/` folder.
-4. Open <https://www.linkedin.com/notifications/>.
-
-To change the shortcut: `chrome://extensions/shortcuts`.
-
-After you edit the code, click the reload icon on the extension card, then refresh the LinkedIn tab.
-
 ## Develop
+
+After you edit the code, press the reload icon on the extension card (loaded from `extension/`), then refresh the LinkedIn tab.
 
 ```bash
 npm test                       # unit tests for the state logic (Node 18+)
 npm run package                # zip the extension into dist/
+git tag v0.1.2 && git push --tags  # CI tests, packages and publishes the release (tag must match manifest version)
 python3 scripts/make_icons.py  # regenerate icons
 ```
 
