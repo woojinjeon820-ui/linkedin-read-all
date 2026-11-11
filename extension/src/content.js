@@ -198,9 +198,81 @@
     else if (!on && el.hasAttribute(name)) el.removeAttribute(name);
   }
 
+  // ---------- LinkedIn's own blue "new" highlight ----------
+  // LinkedIn paints unread cards with a translucent blue "new" background on a box just
+  // inside the card, and only turns it white when you click that card. Its class names
+  // are hashed, so we find the box by colour. When the extension marks a card read we
+  // repaint that box with LinkedIn's normal card colour; marking it unread restores it.
+  const NATIVE_ATTR = 'data-lnra-native'; // holds the box's original inline background
+
+  function parseColor(s) {
+    const m = /rgba?\(([^)]+)\)/.exec(s || '');
+    if (!m) return null;
+    const p = m[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  }
+
+  function isNewBlue(c) {
+    return !!c && c.a > 0.03 && c.b >= 150 && c.b - c.r >= 40;
+  }
+
+  function nativeNewBoxes(card) {
+    const width = card.getBoundingClientRect().width || 1;
+    const els = [card, ...card.querySelectorAll(':scope > *, :scope > * > *, :scope > * > * > *')];
+    return els.filter(
+      (el) =>
+        !el.closest('[data-lnra-ui]') &&
+        (el.hasAttribute(NATIVE_ATTR) ||
+          (isNewBlue(parseColor(getComputedStyle(el).backgroundColor)) &&
+            el.getBoundingClientRect().width >= 0.8 * width))
+    );
+  }
+
+  function opaqueBackground(el) {
+    if (!el || el.hasAttribute(NATIVE_ATTR) || el.closest('[data-lnra-ui]')) return null;
+    const bg = getComputedStyle(el).backgroundColor;
+    const c = parseColor(bg);
+    return c && c.a === 1 && !isNewBlue(c) ? bg : null;
+  }
+
+  // LinkedIn's normal (read) card colour, in whatever theme LinkedIn is showing: taken
+  // from a card that isn't highlighted, else from the panel around the filter pills.
+  function readCardColor() {
+    for (const card of cardsByKey.values()) {
+      for (const el of [card, ...card.querySelectorAll(':scope > *, :scope > * > *')]) {
+        const bg = opaqueBackground(el);
+        if (bg) return bg;
+      }
+    }
+    const root = feedRoot();
+    const pill = root && root.querySelector('input[type="checkbox"], label');
+    for (let el = pill; el && el !== root; el = el.parentElement) {
+      const bg = opaqueBackground(el);
+      if (bg) return bg;
+    }
+    return '#FFFFFF';
+  }
+
+  function syncNativeHighlight(card, unread, getReadColor) {
+    for (const el of nativeNewBoxes(card)) {
+      if (!unread) {
+        if (!el.hasAttribute(NATIVE_ATTR)) el.setAttribute(NATIVE_ATTR, el.style.backgroundColor || '');
+        el.style.setProperty('background-color', getReadColor(), 'important');
+      } else if (el.hasAttribute(NATIVE_ATTR)) {
+        const original = el.getAttribute(NATIVE_ATTR);
+        el.style.removeProperty('background-color');
+        if (original) el.style.backgroundColor = original;
+        el.removeAttribute(NATIVE_ATTR);
+      }
+    }
+  }
+
   function render() {
     if (!isNotificationsPage()) return;
+    let readColor = null;
+    const getReadColor = () => (readColor = readColor || readCardColor());
     for (const [key, card] of cardsByKey) {
+      syncNativeHighlight(card, L.isUnread(data, key), getReadColor);
       setAttr(card, 'data-lnra-unread', L.isUnread(data, key));
       setAttr(card, 'data-lnra-kept', L.isKept(data, key));
       setAttr(card, 'data-lnra-selected', selecting && selected.has(key));
@@ -487,7 +559,10 @@
   // ---------- boot ----------
   const observer = new MutationObserver(queueScan);
   load().then(() => {
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+    // class changes too: LinkedIn can switch a card between its "new" and read styling
+    // without adding nodes. (We only ever change style and data-* attributes, so this
+    // can't loop on our own writes.)
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
     scan();
   });
   // LinkedIn is a single-page app: catch route changes that don't touch the DOM much.

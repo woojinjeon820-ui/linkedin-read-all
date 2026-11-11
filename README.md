@@ -76,6 +76,7 @@ To change the keyboard shortcut, go to `chrome://extensions/shortcuts`.
 LinkedIn's notification menu has no per-item "mark as read" or "mark as unread", and LinkedIn clears its own unread styling as soon as you open the page. So the extension keeps its **own** read / unread / kept state for each notification, stored only in your browser (`chrome.storage.local`). Unread items get a blue tint and dot; items you kept unread get an amber tint and a flag.
 
 - A notification counts as read once you open it, or when you use a bulk action.
+- LinkedIn's own light-blue "new" background goes away too. LinkedIn normally keeps that highlight until you click each card. When the extension marks a card read, it repaints the card in LinkedIn's normal colour, and marking it unread brings the highlight back. LinkedIn already counts every notification as seen once you open the page, so this only changes what you see.
 - After your first "Mark all as read", older notifications that load as you scroll come in as read. Only new ones at the top come in as unread.
 - Each notification is identified by its link plus its kind (reaction, comment, job alert, and so on). If LinkedIn rolls new reactions into a notification you already read, it stays read.
 - It makes **no network requests** and changes nothing on LinkedIn's servers. It only reads the page and adds its own styling.
