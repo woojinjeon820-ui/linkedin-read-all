@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Read-All",
+  "version": "0.1.0",
+  "description": "Mark all LinkedIn notifications as read in one click, or bulk-select which ones to read or keep unread.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.linkedin.com/*"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": ["src/core.js", "src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "LinkedIn Read-All",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "mark-all-read": {
+      "suggested_key": { "default": "Alt+Shift+R" },
+      "description": "Mark all LinkedIn notifications as read"
+    }
+  }
+}

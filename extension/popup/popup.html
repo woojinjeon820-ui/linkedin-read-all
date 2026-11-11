@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>LinkedIn Read-All</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="../icons/icon48.png" width="24" height="24" alt="" />
+      <h1>LinkedIn Read-All</h1>
+    </header>
+    <p class="count"><strong id="n">–</strong> <span id="label">unread notifications</span></p>
+    <button id="markAll" class="primary">Mark all as read</button>
+    <button id="open">Open notifications</button>
+    <p class="hint">
+      On the Notifications page, use <b>Select</b> in the bottom bar to keep a few unread
+      or mark chosen ones read / unread. Shortcut: <kbd id="shortcut">Alt+Shift+R</kbd>
+    </p>
+    <script src="../src/core.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

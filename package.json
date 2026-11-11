@@ -1,0 +1,11 @@
+{
+  "name": "linkedin-read-all",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome/Aside extension: mark all LinkedIn notifications as read, or bulk-select which to read or keep unread.",
+  "scripts": {
+    "test": "node --test tests/core.test.js",
+    "package": "bash scripts/package.sh"
+  },
+  "license": "MIT"
+}

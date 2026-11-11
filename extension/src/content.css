@@ -1,0 +1,105 @@
+/* LinkedIn Read-All — card decorations. Only data-lnra-* attributes and .lnra-*
+   classes are targeted, so LinkedIn's own styles are untouched. */
+
+[data-lnra-card] {
+  position: relative;
+}
+
+/* Tint is an overlay because LinkedIn paints an opaque background on an inner
+   element; a background on the card itself would be hidden. */
+[data-lnra-card][data-lnra-unread]::after,
+[data-lnra-card][data-lnra-selected]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+[data-lnra-card][data-lnra-unread]::after {
+  background: rgba(10, 102, 194, 0.08);
+}
+
+[data-lnra-card][data-lnra-unread][data-lnra-kept]::after {
+  background: rgba(232, 160, 0, 0.1);
+}
+
+[data-lnra-card][data-lnra-selected]::after {
+  background: rgba(10, 102, 194, 0.16);
+  box-shadow: inset 0 0 0 2px #0a66c2;
+}
+
+.lnra-mark {
+  position: absolute;
+  top: 10px;
+  right: 52px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+  font: 13px/1 -apple-system, system-ui, sans-serif;
+}
+
+.lnra-dot,
+.lnra-flag,
+.lnra-box {
+  display: none;
+}
+
+[data-lnra-unread] > .lnra-mark .lnra-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0a66c2;
+}
+
+[data-lnra-kept] > .lnra-mark .lnra-dot {
+  display: none;
+}
+
+[data-lnra-kept] > .lnra-mark .lnra-flag {
+  display: inline-block;
+  color: #e8a000;
+  font-size: 15px;
+}
+
+/* Selection mode: room on the left for a checkbox, and a pointer on every card. */
+html[data-lnra-selecting] [data-lnra-card] {
+  cursor: pointer;
+  user-select: none;
+}
+
+html[data-lnra-selecting] .lnra-mark {
+  top: 50%;
+  right: auto;
+  left: 10px;
+  transform: translateY(-50%);
+}
+
+html[data-lnra-selecting] [data-lnra-card] > :not(.lnra-mark) {
+  margin-left: 30px;
+}
+
+html[data-lnra-selecting] .lnra-mark .lnra-dot,
+html[data-lnra-selecting] .lnra-mark .lnra-flag {
+  display: none !important;
+}
+
+html[data-lnra-selecting] .lnra-mark .lnra-box {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 2px solid #666;
+  border-radius: 4px;
+  background: #fff;
+}
+
+html[data-lnra-selecting] [data-lnra-selected] > .lnra-mark .lnra-box {
+  border-color: #0a66c2;
+  background: #0a66c2
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 14px no-repeat;
+}
