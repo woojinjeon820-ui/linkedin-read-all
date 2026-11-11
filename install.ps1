@@ -294,8 +294,18 @@ function Get-FolderDialog($b) {
 
 function Complete-FolderDialog($dlg, $win) {
   $editCond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, $CT::Edit)
-  $edits = @(); foreach ($e in $dlg.FindAll($Scope::Descendants, $editCond)) { $edits += $e }
-  $edit = @($edits | Where-Object { @('1148', '1152') -contains $_.Current.AutomationId -or $_.Current.Name -match '^(Folder|File name)' })[0]
+  # The window shows up before its controls do, so wait for the Folder box.
+  $edit = Wait-For {
+    @($dlg.FindAll($Scope::Descendants, $editCond) | Where-Object {
+      @('1148', '1152') -contains $_.Current.AutomationId -or $_.Current.Name -match '^(Folder|File name)'
+    })[0]
+  } 10
+  if ($env:LNRA_DEBUG) {
+    Say "[debug] dialog: '$($dlg.Current.Name)' class=$($dlg.Current.ClassName)"
+    foreach ($e in $dlg.FindAll($Scope::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
+      try { Say "[debug]   $($e.Current.ControlType.ProgrammaticName) '$($e.Current.Name)' id=$($e.Current.AutomationId)" } catch {}
+    }
+  }
   # Without the folder box we'd confirm whatever folder the dialog happens to show, so stop.
   if (-not $edit) { return $false }
   $okCond = New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, '1')
