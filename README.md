@@ -22,6 +22,8 @@ Install https://github.com/woojinjeon820-ui/linkedin-read-all: run `curl -fsSL h
 
 The installer does the whole job: download, load into the browser, or reload on an update. In **Aside on macOS** and in **Chrome, Edge, Brave and Aside on Windows** that includes the browser clicks, so there is nothing left for you. In other browsers on macOS and Linux it opens the Extensions page and copies the folder path, and you do the last two clicks (the agent tells you which).
 
+**Approvals:** Claude Code in auto mode runs it without asking. Codex runs commands in a sandbox with no network access, so it asks you once to run the installer outside the sandbox. Approve that, or start Codex with `codex --sandbox danger-full-access` to skip the question.
+
 ### Do it yourself
 
 **macOS / Linux, one command** (Chrome, Aside, Edge, Brave, Arc):
