@@ -49,17 +49,34 @@ function Test-OurManifest([string]$dir) {
 function Install-Files {
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
   Say "Finding the latest release of $Name..."
-  $api = "https://api.github.com/repos/$Repo/releases/latest"
-  $rel = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'linkedin-read-all-installer' }
-  $asset = @($rel.assets | Where-Object { $_.name -like '*.zip' })[0]
-  if (-not $asset) { throw "no .zip found in the latest release of $Repo." }
-  $St.Version = ($rel.tag_name -replace '^v', '')
+  # github.com/<repo>/releases/latest redirects to .../tag/vX.Y.Z. Unlike api.github.com, that
+  # isn't rate-limited (60 requests an hour per IP, easy to hit on a shared network).
+  $zipUrl = $null
+  try {
+    $req = [Net.WebRequest]::Create("https://github.com/$Repo/releases/latest")
+    $req.Method = 'HEAD'; $req.UserAgent = 'linkedin-read-all-installer'
+    $resp = $req.GetResponse()
+    $tag = ($resp.ResponseUri.AbsolutePath -split '/')[-1]
+    $resp.Close()
+    if ($tag -match '^v\d') {
+      $St.Version = $tag -replace '^v', ''
+      $zipUrl = "https://github.com/$Repo/releases/download/$tag/linkedin-read-all-$($St.Version).zip"
+    }
+  } catch {}
+  if (-not $zipUrl) {
+    $api = "https://api.github.com/repos/$Repo/releases/latest"
+    $rel = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'linkedin-read-all-installer' }
+    $asset = @($rel.assets | Where-Object { $_.name -like '*.zip' })[0]
+    if (-not $asset) { throw "no .zip found in the latest release of $Repo." }
+    $St.Version = ($rel.tag_name -replace '^v', '')
+    $zipUrl = $asset.browser_download_url
+  }
 
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ('lnra-' + [guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tmp | Out-Null
   try {
     $zip = Join-Path $tmp 'ext.zip'
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing
+    Invoke-WebRequest -Uri $zipUrl -OutFile $zip -UseBasicParsing
     Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $tmp 'ext')
     if (-not (Test-OurManifest (Join-Path $tmp 'ext'))) { throw "the download doesn't look like $Name." }
 

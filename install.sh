@@ -136,11 +136,19 @@ fi
 
 # --- 1. Find the latest release zip -------------------------------------------------------
 say "Finding the latest release of $NAME..."
-api="https://api.github.com/repos/$REPO/releases/latest"
-zip_url=$(curl -fsSL "$api" | grep -o '"browser_download_url": *"[^"]*\.zip"' | head -1 | sed 's/.*"\(https[^"]*\)"/\1/') ||
-  die "couldn't reach GitHub ($api)."
-[ -n "$zip_url" ] || die "no .zip found in the latest release of $REPO."
-version=$(printf '%s' "$zip_url" | sed -n 's/.*-\([0-9][0-9.]*\)\.zip$/\1/p')
+# github.com/<repo>/releases/latest redirects to .../tag/vX.Y.Z. Unlike api.github.com, that
+# isn't rate-limited (60 requests an hour per IP, easy to hit on a shared network).
+tag=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" 2>/dev/null | sed -n 's#.*/releases/tag/##p')
+if [ -n "$tag" ]; then
+  version=${tag#v}
+  zip_url="https://github.com/$REPO/releases/download/$tag/linkedin-read-all-$version.zip"
+else
+  api="https://api.github.com/repos/$REPO/releases/latest"
+  zip_url=$(curl -fsSL "$api" | grep -o '"browser_download_url": *"[^"]*\.zip"' | head -1 | sed 's/.*"\(https[^"]*\)"/\1/') ||
+    die "couldn't reach GitHub ($api)."
+  [ -n "$zip_url" ] || die "no .zip found in the latest release of $REPO."
+  version=$(printf '%s' "$zip_url" | sed -n 's/.*-\([0-9][0-9.]*\)\.zip$/\1/p')
+fi
 
 # --- 2. Download and unpack into a temp dir, check it's really the extension -------------
 tmp=$(mktemp -d)
