@@ -552,7 +552,7 @@ switch ($outcome) {
 if ($outcome -ne 'skipped') {
   $why = @{
     'no-uia'          = "Windows UI Automation isn't available in this shell."
-    'no-window'       = "couldn't find the browser's Extensions page."
+    'no-window'       = $(if ($key -eq 'aside') { "couldn't open Aside's Extensions page. If Aside is asking you to sign in, finish that first, then run this installer again." } else { "couldn't find the browser's Extensions page." })
     'no-page'         = "couldn't read the Extensions page (its accessibility tree didn't load)."
     'devmode-blocked' = 'Developer mode is turned off by a policy (school or work managed browser). Ask your admin, or use another browser.'
     'no-load-button'  = "couldn't find the Load unpacked button."

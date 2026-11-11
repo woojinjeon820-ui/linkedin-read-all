@@ -25,23 +25,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chrome, edge, brave, aside]
+        # Aside is supported too, but a fresh Aside profile stops at a sign-in screen, so it can't run here.
+        browser: [chrome, edge, brave]
     steps:
       - uses: actions/checkout@v4
       - name: Install Brave
         if: matrix.browser == 'brave'
         shell: powershell
         run: choco install brave -y --no-progress
-      - name: Install Aside
-        if: matrix.browser == 'aside'
-        shell: powershell
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $page = (Invoke-WebRequest 'https://aside.com/download?os=win' -UseBasicParsing).Content
-          $url = [regex]::Match($page, 'https://releases\.aside\.com/[^"\\]*win-x64\.exe').Value
-          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\aside-setup.exe" -UseBasicParsing
-          Start-Process "$env:RUNNER_TEMP\aside-setup.exe" -ArgumentList '--silent' -Wait
-          if (-not (Test-Path 'C:\Program Files\Aside\Application\Aside.exe')) { exit 1 }
       - name: Parse install.ps1
         shell: powershell
         run: |
@@ -87,13 +78,6 @@ jobs:
           grep -q 'Updating that copy' third.txt
           grep -qx 'LNRA_RESULT=reloaded' <(tr -d '\r' < third.txt)
           test ! -e "$USERPROFILE/LinkedIn-Read-All"
-      - name: Show where Aside keeps its default profile
-        if: always() && matrix.browser == 'aside'
-        shell: powershell
-        run: |
-          Start-Process 'C:\Program Files\Aside\Application\Aside.exe'
-          Start-Sleep -Seconds 20
-          Get-ChildItem $env:LOCALAPPDATA, $env:APPDATA -Recurse -Depth 4 -Filter 'Preferences' -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'aside' } | ForEach-Object { $_.FullName }
       - name: Screenshot on failure
         if: failure()
         shell: powershell
