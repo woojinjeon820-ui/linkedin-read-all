@@ -180,8 +180,6 @@ function Wait-For([scriptblock]$probe, [int]$seconds) {
   return $null
 }
 
-function Test-Alive($el) { try { [void]$el.Current.Name; return $true } catch { return $false } }
-
 function Get-Pattern($el, $pattern) {
   [object]$p = $null
   if ($el.TryGetCurrentPattern($pattern, [ref]$p)) { return $p }
@@ -295,6 +293,9 @@ function Get-FolderDialog($b) {
 # The folder picker is a classic Win32 dialog. UI Automation often sees its Folder box (id 1152)
 # and Select Folder button (id 1) as bare panes, so fall back to Win32 messages on their handles.
 function Complete-FolderDialog($dlg) {
+  # A closed dialog's UI Automation element can keep answering, so ask Windows about its handle.
+  $hDlg = [IntPtr]$dlg.Current.NativeWindowHandle
+  $isOpen = { [LNRA.Native]::IsWindow($hDlg) -and [LNRA.Native]::IsWindowVisible($hDlg) }
   $idCond = { param($id) New-Object System.Windows.Automation.PropertyCondition($AE::AutomationIdProperty, $id) }
   # The window shows up before its controls do, so wait for the Folder box.
   $edit = Wait-For {
@@ -317,7 +318,7 @@ function Complete-FolderDialog($dlg) {
   elseif ($hEdit -ne [IntPtr]::Zero) { [void][LNRA.Native]::SendMessage($hEdit, 0x000C, [IntPtr]::Zero, $Dest) }  # WM_SETTEXT
   else { return $false }
 
-  for ($i = 0; $i -lt 3 -and (Test-Alive $dlg); $i++) {
+  for ($i = 0; $i -lt 3 -and (& $isOpen); $i++) {
     $ok = $dlg.FindFirst($Scope::Descendants, (& $idCond '1'))
     if (-not $ok) { return $false }
     $inv = Get-Pattern $ok ([System.Windows.Automation.InvokePattern]::Pattern)
@@ -326,9 +327,9 @@ function Complete-FolderDialog($dlg) {
     elseif ($hOk -ne [IntPtr]::Zero) { [void][LNRA.Native]::PostMessage($hOk, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) }  # BM_CLICK
     else { Invoke-Click $ok $dlg }
     # If Windows only navigated into the folder, the next press selects it.
-    [void](Wait-For { -not (Test-Alive $dlg) } 3)
+    [void](Wait-For { -not (& $isOpen) } 3)
   }
-  return -not (Test-Alive $dlg)
+  return -not (& $isOpen)
 }
 
 # Press the Reload button on our extension's card (the closest ancestor with exactly one Reload).
@@ -365,6 +366,8 @@ function Invoke-BrowserStep($b) {
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, string lParam);
 [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+[DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
 '@
   } catch {}  # already defined by an earlier run in this session
   # Seen by the helper functions through PowerShell's dynamic scoping.
