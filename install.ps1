@@ -333,7 +333,10 @@ function Enable-DevMode($page, $win) {
       try { Invoke-Click $c $win -Mouse:$useMouse } catch { continue }
       if (Wait-For { Get-LoadButton $page } 4) { return 'on' }
       if (& $isOn) {
-        if (Wait-For { Get-LoadButton $page } 6) { return 'on' }
+        if (Wait-For { Get-LoadButton $page } 3) { return 'on' }
+        # Edge: the side menu we opened covers the page and hides it from UI Automation. Close it.
+        if (Set-Foreground $win) { [System.Windows.Forms.SendKeys]::SendWait('{ESC}') }
+        if (Wait-For { Get-LoadButton $page } 5) { return 'on' }
         Write-DebugTree $page 'Developer mode is on but no Load unpacked button'
         return 'failed'
       }
