@@ -199,11 +199,17 @@
   }
 
   // ---------- LinkedIn's own blue "new" highlight ----------
-  // LinkedIn paints unread cards with a translucent blue "new" background on a box just
-  // inside the card, and only turns it white when you click that card. Its class names
-  // are hashed, so we find the box by colour. When the extension marks a card read we
-  // repaint that box with LinkedIn's normal card colour; marking it unread restores it.
+  // LinkedIn marks unread cards two ways and only clears them when you click that card:
+  // a translucent blue "new" background on a box just inside the card, and a small blue
+  // dot in the card's left margin, before the avatar. Its class names are hashed, so we
+  // find both by colour and size. When the extension marks a card read we repaint the
+  // box with LinkedIn's normal card colour and hide the dot; marking it unread restores
+  // both.
   const NATIVE_ATTR = 'data-lnra-native'; // holds the box's original inline background
+  const DOT_ATTR = 'data-lnra-native-dot'; // on the dot element: content.css hides it
+  const DOT_PSEUDO_ATTR = 'data-lnra-native-dot-pseudo'; // 'before' | 'after' when the dot is a pseudo-element
+  const DOT_MIN = 4;
+  const DOT_MAX = 16;
 
   function parseColor(s) {
     const m = /rgba?\(([^)]+)\)/.exec(s || '');
@@ -226,6 +232,72 @@
           (isNewBlue(parseColor(getComputedStyle(el).backgroundColor)) &&
             el.getBoundingClientRect().width >= 0.8 * width))
     );
+  }
+
+  function isDotSize(w, h) {
+    return w >= DOT_MIN && w <= DOT_MAX && h >= DOT_MIN && h <= DOT_MAX && Math.abs(w - h) <= 2;
+  }
+
+  // Round enough to be a dot, so a small square icon is left alone.
+  function isRound(cs, w) {
+    const br = cs.borderRadius || '';
+    const n = parseFloat(br);
+    if (!(n > 0)) return false;
+    return br.trim().endsWith('%') ? n >= 40 : n >= 0.4 * w;
+  }
+
+  // Elements (and pseudo-elements, as [el, '::before' | '::after']) in the card's left
+  // strip that are small and LinkedIn-blue: the "new" dot. Already-hidden ones are
+  // returned too, so marking unread can restore them.
+  function nativeNewDots(card) {
+    const cardRect = card.getBoundingClientRect();
+    const leftStrip = cardRect.left + 0.3 * (cardRect.width || 1);
+    const found = [];
+    const pseudos = [];
+    for (const el of [card, ...card.querySelectorAll('*')]) {
+      if (el.closest('[data-lnra-ui]')) continue;
+      if (el.hasAttribute(DOT_PSEUDO_ATTR)) {
+        pseudos.push([el, '::' + el.getAttribute(DOT_PSEUDO_ATTR)]);
+        continue;
+      }
+      if (el.hasAttribute(DOT_ATTR)) {
+        found.push(el);
+        continue;
+      }
+      const r = el.getBoundingClientRect();
+      if (r.left > leftStrip) continue;
+      if (isDotSize(r.width, r.height)) {
+        const cs = getComputedStyle(el);
+        const svg = el instanceof SVGElement;
+        if ((svg && isNewBlue(parseColor(cs.fill))) || (!svg && isRound(cs, r.width) && isNewBlue(parseColor(cs.backgroundColor)))) {
+          found.push(el);
+          continue;
+        }
+      }
+      // A dot drawn with ::before / ::after on a wrapper.
+      for (const pseudo of ['::before', '::after']) {
+        const ps = getComputedStyle(el, pseudo);
+        if (!ps.content || ps.content === 'none' || ps.content === 'normal') continue;
+        const w = parseFloat(ps.width);
+        if (isDotSize(w, parseFloat(ps.height)) && isRound(ps, w) && isNewBlue(parseColor(ps.backgroundColor))) {
+          pseudos.push([el, pseudo]);
+        }
+      }
+    }
+    return { found, pseudos };
+  }
+
+  function syncNativeDot(card, unread) {
+    const { found, pseudos } = nativeNewDots(card);
+    for (const el of found) {
+      if (!unread && !el.hasAttribute(DOT_ATTR)) el.setAttribute(DOT_ATTR, '');
+      else if (unread && el.hasAttribute(DOT_ATTR)) el.removeAttribute(DOT_ATTR);
+    }
+    for (const [el, pseudo] of pseudos) {
+      const want = pseudo.slice(2);
+      if (!unread && el.getAttribute(DOT_PSEUDO_ATTR) !== want) el.setAttribute(DOT_PSEUDO_ATTR, want);
+      else if (unread && el.hasAttribute(DOT_PSEUDO_ATTR)) el.removeAttribute(DOT_PSEUDO_ATTR);
+    }
   }
 
   function opaqueBackground(el) {
@@ -254,6 +326,7 @@
   }
 
   function syncNativeHighlight(card, unread, getReadColor) {
+    syncNativeDot(card, unread);
     for (const el of nativeNewBoxes(card)) {
       if (!unread) {
         if (!el.hasAttribute(NATIVE_ATTR)) el.setAttribute(NATIVE_ATTR, el.style.backgroundColor || '');

@@ -13,6 +13,10 @@
       .avatar { width: 48px; height: 48px; border-radius: 50%; background: #c7d7e8; flex: none; }
       .menu { position: absolute; right: 12px; top: 10px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; font-size: 18px; }
       .overlay { position: absolute; inset: 0; z-index: 1; }
+      /* LinkedIn's "new" markers: a tinted box and a small blue dot in the left margin. */
+      .card.new { background: rgba(10, 102, 194, 0.08); }
+      .card.new::before { content: ''; position: absolute; left: 6px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #0a66c2; }
+      .dot { position: absolute; left: 6px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #0a66c2; }
       .pills { padding: 12px 16px; background: #fff; margin-bottom: 8px; border-radius: 8px; }
     </style>
   </head>
@@ -35,9 +39,13 @@
         ['/me/profile-views/', '20 people viewed your profile'],
       ];
       const list = document.getElementById('list');
+      // Every other card is "new": some draw the dot as an element, some as ::before.
+      let n = 0;
       const add = ([href, text]) => {
         const w = document.createElement('div');
-        w.innerHTML = `<div><div class="card"><div class="avatar"></div><div><div>${text}</div><small>1h</small></div>
+        const i = n++;
+        const dot = i % 4 === 1 ? '<span class="dot"></span>' : '';
+        w.innerHTML = `<div><div class="card${i % 4 === 3 ? ' new' : ''}">${dot}<div class="avatar"></div><div><div>${text}</div><small>1h</small></div>
           <div><button class="menu" aria-label="More options" aria-expanded="false">⋯</button></div>
           <a class="overlay" href="${href}" aria-label="${text}"></a></div></div>`;
         list.appendChild(w);

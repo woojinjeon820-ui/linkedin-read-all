@@ -7,7 +7,8 @@ const badge = () => E.evaluate(() => chrome.action.getBadgeText({}));
 const stored = () => E.evaluate(async () => { const d = (await chrome.storage.local.get('lnra')).lnra || { items: {} }; const it = Object.values(d.items); return { n: it.length, unread: it.filter(e => e.s === 'u').length, kept: it.filter(e => e.k).length }; });
 const P = await openTab('https://www.linkedin.com/notifications/');
 await sleep(4500);
-const st = (pg = P) => pg.evaluate(() => { const h = document.getElementById('lnra-host'); return { cards: document.querySelectorAll('[data-lnra-card]').length, unread: document.querySelectorAll('[data-lnra-unread]').length, kept: document.querySelectorAll('[data-lnra-kept]').length, selected: document.querySelectorAll('[data-lnra-selected]').length, selecting: document.documentElement.hasAttribute('data-lnra-selecting'), bar: !!(h && h.isConnected), text: h ? [...h.shadowRoot.querySelectorAll('.bar:not([hidden]) .count')].map(e => e.textContent).join('') : '' }; });
+// dots: LinkedIn's own blue "new" dots on the page (8px, LinkedIn blue, round); dotsShown: how many are still visible.
+const st = (pg = P) => pg.evaluate(() => { const h = document.getElementById('lnra-host'); const dots = [...document.querySelectorAll('[data-lnra-card] *')].filter(el => { if (el.closest('[data-lnra-ui]')) return false; const r = el.getBoundingClientRect(); if (r.width < 4 || r.width > 16 || Math.abs(r.width - r.height) > 2) return false; const bg = getComputedStyle(el).backgroundColor; return /rgba?\(10, 102, 194/.test(bg); }); return { cards: document.querySelectorAll('[data-lnra-card]').length, unread: document.querySelectorAll('[data-lnra-unread]').length, kept: document.querySelectorAll('[data-lnra-kept]').length, selected: document.querySelectorAll('[data-lnra-selected]').length, selecting: document.documentElement.hasAttribute('data-lnra-selecting'), bar: !!(h && h.isConnected), text: h ? [...h.shadowRoot.querySelectorAll('.bar:not([hidden]) .count')].map(e => e.textContent).join('') : '', dots: dots.length, dotsShown: dots.filter(el => getComputedStyle(el).visibility !== 'hidden').length }; });
 const sc = (s, pg = P) => pg.evaluate((s) => document.getElementById('lnra-host').shadowRoot.querySelector(s).click(), s);
 const C = P.locator('[data-lnra-card]');
 let s = await st();
@@ -26,8 +27,10 @@ await sc('.q-unread'); s = await st(); check('Select > Unread picks only unread 
 await P.keyboard.press('Escape'); s = await st(); check('Esc exits selection mode and clears selection', !s.selecting && s.selected === 0, s);
 await sc('.select'); await sc('.done'); s = await st(); check('Done exits selection mode', !s.selecting, s);
 await sc('.all'); await sleep(300); s = await st(); check('Mark all as read', s.unread === 0 && s.text === 'All caught up', s);
+check("LinkedIn's own blue dots hidden once read" + (s.dots ? '' : ' (no native dots on this page right now)'), s.dotsShown === 0, { dots: s.dots, shown: s.dotsShown });
 await sleep(400); check('badge cleared when 0 unread', (await badge()) === '', await badge());
 await sc('.select'); await sc('.all-unread'); await sleep(300); s = await st(); check('All unread: every loaded card unread, none kept', s.unread === s.cards && s.kept === 0 && !s.selecting, s);
+check("LinkedIn's own blue dots come back when unread", s.dotsShown === s.dots, { dots: s.dots, shown: s.dotsShown });
 await sleep(400); check('badge updates to new count', (await badge()) === String(s.cards) || (s.cards > 99 && (await badge()) === '99+'), await badge());
 await sc('.undo'); await sleep(300); s = await st(); check('Undo of All unread restores all read', s.unread === 0, s);
 // click-to-read (Cmd+click opens in a new tab, so this page stays put)

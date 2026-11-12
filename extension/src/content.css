@@ -29,6 +29,17 @@
   box-shadow: inset 0 0 0 2px #0a66c2;
 }
 
+/* LinkedIn's own "new" dot on a card the extension has marked read (see content.js).
+   visibility, not display, so the card's layout does not shift. */
+[data-lnra-native-dot] {
+  visibility: hidden !important;
+}
+
+[data-lnra-native-dot-pseudo='before']::before,
+[data-lnra-native-dot-pseudo='after']::after {
+  visibility: hidden !important;
+}
+
 .lnra-mark {
   position: absolute;
   top: 10px;
