@@ -11,6 +11,11 @@
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/*"],
+      "js": ["src/early.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.linkedin.com/*"],
       "js": ["src/core.js", "src/content.js"],
       "css": ["src/content.css"],
       "run_at": "document_idle"

@@ -10,10 +10,10 @@ const ext = process.argv[2]; const URL_ = process.argv[3]; const FORCE = process
 const shim = `(() => { if (globalThis.chrome && chrome.storage && chrome.storage.local && chrome.runtime && chrome.runtime.id) return;
   const mem = {}; const ls = [];
   globalThis.chrome = Object.assign(globalThis.chrome || {}, {
-    storage: { local: { get(k, cb) { cb({[k]: mem[k]}); }, set(o) { const ch = {}; for (const k in o) { ch[k] = {oldValue: mem[k], newValue: JSON.parse(JSON.stringify(o[k]))}; mem[k] = ch[k].newValue; } ls.forEach(f => f(ch, 'local')); } },
+    storage: { local: { get(k, cb) { const out = {}; for (const key of [].concat(k)) out[key] = mem[key]; cb(out); }, set(o) { const ch = {}; for (const k in o) { ch[k] = {oldValue: mem[k], newValue: JSON.parse(JSON.stringify(o[k]))}; mem[k] = ch[k].newValue; } ls.forEach(f => f(ch, 'local')); } },
       onChanged: { addListener(f) { ls.push(f); } } },
     runtime: { onMessage: { addListener() {} }, sendMessage() {} } }); })();`;
-const code = shim + fs.readFileSync(path.join(ext, 'src/core.js'), 'utf8') + fs.readFileSync(path.join(ext, 'src/content.js'), 'utf8');
+const code = shim + fs.readFileSync(path.join(ext, 'src/early.js'), 'utf8') + fs.readFileSync(path.join(ext, 'src/core.js'), 'utf8') + fs.readFileSync(path.join(ext, 'src/content.js'), 'utf8');
 const css = fs.readFileSync(path.join(ext, 'src/content.css'), 'utf8');
 const cssInject = `(() => { const s = new CSSStyleSheet(); s.replaceSync(${JSON.stringify(css)}); document.adoptedStyleSheets = [...document.adoptedStyleSheets, s]; })();`;
 const repl = `

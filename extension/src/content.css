@@ -30,7 +30,8 @@
 }
 
 /* LinkedIn's own "new" dot on a card the extension has marked read (see content.js).
-   visibility, not display, so the card's layout does not shift. */
+   visibility, not display, so the card's layout does not shift. content.js also adds a
+   <style id="lnra-dot-style"> with learned selectors so re-rendered dots never flash. */
 [data-lnra-native-dot] {
   visibility: hidden !important;
 }

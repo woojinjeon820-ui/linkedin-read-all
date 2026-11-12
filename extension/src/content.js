@@ -12,7 +12,7 @@
   'use strict';
 
   const L = globalThis.LNRA;
-  if (!L || globalThis.__lnraLoaded) return;
+  if (!L || !globalThis.__lnraDot || globalThis.__lnraLoaded) return;
   globalThis.__lnraLoaded = true;
 
   const SELECTORS = {
@@ -159,6 +159,7 @@
 
   function scan() {
     if (!loaded) return;
+    D.syncPageAttr(location.pathname);
     if (!isNotificationsPage()) {
       if (selecting) setSelecting(false);
       bar.hide();
@@ -208,6 +209,9 @@
   const NATIVE_ATTR = 'data-lnra-native'; // holds the box's original inline background
   const DOT_ATTR = 'data-lnra-native-dot'; // on the dot element: content.css hides it
   const DOT_PSEUDO_ATTR = 'data-lnra-native-dot-pseudo'; // 'before' | 'after' when the dot is a pseudo-element
+  // early.js (document_start) owns the learned-selector stylesheet and the <html> page flag.
+  const D = globalThis.__lnraDot;
+  const DOT_SHOW_ATTR = D.DOT_SHOW_ATTR; // on the dot of a card we show as unread
   const DOT_MIN = 4;
   const DOT_MAX = 16;
 
@@ -287,11 +291,40 @@
     return { found, pseudos };
   }
 
+  // ---------- instant hide for freshly rendered dots ----------
+  // scan() runs ~150ms after LinkedIn renders, so on a reload, a filter switch, a
+  // lazy-load or coming back to the page the dot would show for a moment before the
+  // attribute lands. Once a dot has been found by the heuristic, its tag + class
+  // signature is handed to early.js (LinkedIn's hashed class names are stable within a
+  // build), which persists it and keeps a stylesheet that hides matching dots on the
+  // notifications page the instant they are painted, from document_start on the next
+  // load. Cards we show as unread opt their dot back in with DOT_SHOW_ATTR. A new
+  // LinkedIn build changes the names: stale selectors match nothing and the new
+  // signature is learned on the next hide.
+  function dotSelectorFor(el) {
+    if (el instanceof SVGElement || el.id || !el.classList.length) return null;
+    let sel = el.tagName.toLowerCase();
+    for (const c of el.classList) sel += '.' + CSS.escape(c);
+    if (el.getAttribute('aria-hidden') === 'true') sel += '[aria-hidden="true"]';
+    if (!el.firstChild) sel += ':empty';
+    return sel;
+  }
+
+  function learnDotSelector(el) {
+    D.learn(dotSelectorFor(el));
+  }
+
   function syncNativeDot(card, unread) {
     const { found, pseudos } = nativeNewDots(card);
     for (const el of found) {
-      if (!unread && !el.hasAttribute(DOT_ATTR)) el.setAttribute(DOT_ATTR, '');
-      else if (unread && el.hasAttribute(DOT_ATTR)) el.removeAttribute(DOT_ATTR);
+      if (!unread) {
+        if (!el.hasAttribute(DOT_ATTR)) el.setAttribute(DOT_ATTR, '');
+        if (el.hasAttribute(DOT_SHOW_ATTR)) el.removeAttribute(DOT_SHOW_ATTR);
+        learnDotSelector(el);
+      } else {
+        if (el.hasAttribute(DOT_ATTR)) el.removeAttribute(DOT_ATTR);
+        if (!el.hasAttribute(DOT_SHOW_ATTR)) el.setAttribute(DOT_SHOW_ATTR, '');
+      }
     }
     for (const [el, pseudo] of pseudos) {
       const want = pseudo.slice(2);
@@ -643,10 +676,11 @@
   setInterval(() => {
     if (location.pathname !== lastPath) {
       lastPath = location.pathname;
+      D.syncPageAttr(lastPath);
       queueScan();
     }
   }, 500);
 
   // Exposed for debugging and automated checks.
-  globalThis.__lnra = { scan, actions, getData: () => data, getOrder: () => order.slice(), setSelecting, toggleSelect, selected };
+  globalThis.__lnra = { scan, actions, getData: () => data, getOrder: () => order.slice(), setSelecting, toggleSelect, selected, getDotSelectors: () => D.get() };
 })();

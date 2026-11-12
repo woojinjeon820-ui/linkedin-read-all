@@ -28,6 +28,12 @@ await P.keyboard.press('Escape'); s = await st(); check('Esc exits selection mod
 await sc('.select'); await sc('.done'); s = await st(); check('Done exits selection mode', !s.selecting, s);
 await sc('.all'); await sleep(300); s = await st(); check('Mark all as read', s.unread === 0 && s.text === 'All caught up', s);
 check("LinkedIn's own blue dots hidden once read" + (s.dots ? '' : ' (no native dots on this page right now)'), s.dotsShown === 0, { dots: s.dots, shown: s.dotsShown });
+// Reload with everything read: the learned selector must hide re-rendered dots at once, no flash.
+if (s.dots) {
+  await P.reload(); const t0 = Date.now(); let flashes = 0, samples = 0, seenCards = false;
+  while (Date.now() - t0 < 5000) { const x = await st().catch(() => null); if (x) { samples++; if (x.cards > 0) seenCards = true; if (x.dotsShown > 0) flashes++; } await sleep(60); }
+  check('no dot flash on reload once the dot selector is learned', seenCards && flashes === 0, { samples, flashes, style: await P.evaluate(() => (document.getElementById('lnra-dot-style') || {}).textContent || '') });
+}
 await sleep(400); check('badge cleared when 0 unread', (await badge()) === '', await badge());
 await sc('.select'); await sc('.all-unread'); await sleep(300); s = await st(); check('All unread: every loaded card unread, none kept', s.unread === s.cards && s.kept === 0 && !s.selecting, s);
 check("LinkedIn's own blue dots come back when unread", s.dotsShown === s.dots, { dots: s.dots, shown: s.dotsShown });
@@ -48,7 +54,12 @@ await P.bringToFront();
 await P.locator('header a[href*="/feed"], nav a[href*="/feed"]').first().click().catch(async () => { await P.goto('https://www.linkedin.com/feed/'); });
 await sleep(3000);
 s = await st(); check('bar hidden off the notifications page', !s.bar, { url: P.url(), ...s });
-await P.goBack(); await sleep(3500);
+await P.goBack();
+{ // everything is read here, so any dot seen while the page comes back is a flash
+  const t0 = Date.now(); let flashes = 0, dotsSeen = 0;
+  while (Date.now() - t0 < 3500) { const x = await st().catch(() => null); if (x) { dotsSeen = Math.max(dotsSeen, x.dots); if (x.dotsShown > 0) flashes++; } await sleep(60); }
+  check('no dot flash when coming back to the page' + (dotsSeen ? '' : ' (no native dots on this page right now)'), flashes === 0, { dotsSeen, flashes });
+}
 s = await st(); check('bar and highlights return on coming back', s.bar && s.cards > 0, { url: P.url(), ...s });
 // two tabs stay in sync
 const P2 = await openTab('https://www.linkedin.com/notifications/'); await sleep(4500);

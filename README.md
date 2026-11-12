@@ -94,7 +94,7 @@ To change the keyboard shortcut, go to `chrome://extensions/shortcuts`.
 LinkedIn's notification menu has no per-item "mark as read" or "mark as unread", and LinkedIn clears its own unread styling as soon as you open the page. So the extension keeps its **own** read / unread / kept state for each notification, stored only in your browser (`chrome.storage.local`). Unread items get a blue tint and dot; items you kept unread get an amber tint and a flag.
 
 - A notification counts as read once you open it, or when you use a bulk action.
-- LinkedIn's own "new" markers go away too: the light-blue card background and the small blue dot in the left margin. LinkedIn normally keeps both until you click each card. When the extension marks a card read, it repaints the card in LinkedIn's normal colour and hides the dot, and marking it unread brings both back. LinkedIn already counts every notification as seen once you open the page, so this only changes what you see.
+- LinkedIn's own "new" markers go away too: the light-blue card background and the small blue dot in the left margin. LinkedIn normally keeps both until you click each card. When the extension marks a card read, it repaints the card in LinkedIn's normal colour and hides the dot, and marking it unread brings both back. Once a dot has been seen, its style signature is remembered so that dots on re-rendered cards (reload, filter switch, scrolling, coming back to the page) are hidden the instant they appear. LinkedIn already counts every notification as seen once you open the page, so this only changes what you see.
 - After your first "Mark all as read", older notifications that load as you scroll come in as read. Only new ones at the top come in as unread.
 - Each notification is identified by its link plus its kind (reaction, comment, job alert, and so on). If LinkedIn rolls new reactions into a notification you already read, it stays read.
 - It makes **no network requests** and changes nothing on LinkedIn's servers. It only reads the page and adds its own styling.
@@ -118,6 +118,7 @@ python3 scripts/make_icons.py  # regenerate icons
 
 | Path | What it does |
 | --- | --- |
+| `extension/src/early.js` | Runs at `document_start`: applies the learned "new"-dot selectors before LinkedIn paints, so hidden dots never flash. |
 | `extension/src/core.js` | Pure state logic (keys, read/unread/kept, baseline, undo-safe). Shared by all parts and unit-tested. |
 | `extension/src/content.js` | Finds cards on the page, highlights them, and runs the bottom bar and select mode. `SELECTORS` at the top holds every LinkedIn DOM assumption. |
 | `extension/src/content.css` | Card highlight, flag, and checkbox styles. |
